@@ -38,8 +38,13 @@ class ModelSettings(BaseSettings):
     funasr_model: str = "iic/SenseVoiceSmall"
     funasr_device: str = "cuda:0"
     
-    # CosyVoice 3.0 (Mouth) - 0.5B 版本 (~2-3GB)
-    cosyvoice_model_path: str = "FunAudioLLM/CosyVoice2-0.5B"
+    # CosyVoice 3.0 (Mouth) - 2025年12月发布，最新版本
+    # 支持9种语言+18种中文方言，情感控制，语速控制
+    cosyvoice_model_path: str = "FunAudioLLM/CosyVoice-300M-SFT"  # 或 CosyVoice-300M-Instruct
+    
+    # GeneFace++ (Driver) - 实时3D说话人面部生成
+    # GitHub: https://github.com/yerfor/GeneFace
+    geneface_model_path: str = "models/geneface"
     
     # GeneFace++ (Driver)
     geneface_model_path: str = "models/geneface"
