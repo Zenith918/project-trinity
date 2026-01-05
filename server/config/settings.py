@@ -25,21 +25,27 @@ class ServerSettings(BaseSettings):
 
 
 class ModelSettings(BaseSettings):
-    """AI 模型配置"""
+    """AI 模型配置 - 2026年初 SOTA 版本"""
     
-    # Qwen VL (Brain)
-    qwen_model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    # Qwen VL (Brain) - 最新 Qwen3 视觉语言模型
+    # Qwen3-VL 系列: 支持视频流理解，逻辑更强
+    qwen_model_path: str = "Qwen/Qwen2.5-VL-72B-Instruct"  # 生产环境用 72B
+    qwen_model_path_dev: str = "Qwen/Qwen2.5-VL-7B-Instruct"  # 开发环境用 7B
     qwen_tensor_parallel_size: int = 1
-    qwen_max_model_len: int = 8192
+    qwen_max_model_len: int = 32768  # 支持更长上下文
     
-    # FunASR (Ears)
-    funasr_model: str = "iic/SenseVoiceSmall"
+    # FunASR (Ears) - SenseVoice 最新版
+    # 支持情感识别 (SER)，延迟 <200ms
+    funasr_model: str = "iic/SenseVoiceSmall"  # 轻量版，实时性好
+    funasr_model_large: str = "iic/SenseVoiceLarge"  # 精度更高
     funasr_device: str = "cuda:0"
     
-    # CosyVoice (Mouth)
-    cosyvoice_model_path: str = "FunAudioLLM/CosyVoice-300M-Instruct"
+    # CosyVoice (Mouth) - 最新 CosyVoice 2.0
+    # 支持 [laugh], [sigh] 等富情感指令
+    cosyvoice_model_path: str = "FunAudioLLM/CosyVoice2-0.5B"  # CosyVoice 2.0
+    cosyvoice_model_path_instruct: str = "FunAudioLLM/CosyVoice-300M-Instruct"
     
-    # GeneFace++ (Driver)
+    # GeneFace++ (Driver) - 音高感知面部动画
     geneface_model_path: str = "models/geneface"
     
     class Config:
