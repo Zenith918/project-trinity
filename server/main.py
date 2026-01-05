@@ -9,6 +9,12 @@ Project Trinity - Server Entry Point
     python main.py
 """
 
+import sys
+import os
+
+# 确保 server 目录在 Python 路径中
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional

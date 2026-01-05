@@ -18,9 +18,9 @@ from dataclasses import dataclass
 import asyncio
 from loguru import logger
 
-from ..adapters.brain_adapter import BrainAdapter, BrainResponse
-from .bio_state import BioState, BioStateSnapshot
-from .narrative_mgr import NarrativeManager
+from adapters.brain_adapter import BrainAdapter, BrainResponse
+from mind_engine.bio_state import BioState, BioStateSnapshot
+from mind_engine.narrative_mgr import NarrativeManager
 
 
 @dataclass

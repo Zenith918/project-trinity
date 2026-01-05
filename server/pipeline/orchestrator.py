@@ -17,9 +17,9 @@ from dataclasses import dataclass
 import asyncio
 from loguru import logger
 
-from ..adapters import VoiceAdapter, BrainAdapter, MouthAdapter, DriverAdapter
-from ..mind_engine import EgoDirector
-from .packager import StreamPackager, MediaPacket
+from adapters import VoiceAdapter, BrainAdapter, MouthAdapter, DriverAdapter
+from mind_engine import EgoDirector
+from pipeline.packager import StreamPackager, MediaPacket
 
 
 @dataclass
