@@ -1,0 +1,43 @@
+# Project Trinity - Server Dependencies
+# Python 3.10+
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+websockets>=12.0
+python-multipart>=0.0.6
+
+# AI Models & Inference
+vllm>=0.3.0
+transformers>=4.37.0
+torch>=2.1.0
+torchaudio>=2.1.0
+accelerate>=0.26.0
+
+# Speech & Voice
+funasr>=1.0.0
+modelscope>=1.12.0
+
+# Memory & Vector DB
+mem0ai>=0.0.20
+qdrant-client>=1.7.0
+
+# Protocol & Serialization
+protobuf>=4.25.0
+grpcio>=1.60.0
+
+# Utilities
+numpy>=1.26.0
+scipy>=1.12.0
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+aiofiles>=23.2.0
+
+# Logging & Monitoring
+loguru>=0.7.2
+prometheus-client>=0.19.0
+
+# Audio Processing
+soundfile>=0.12.1
+librosa>=0.10.1
+
