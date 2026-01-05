@@ -54,9 +54,9 @@ IMPORTANT:
 
     def __init__(
         self,
-        model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+        model_path: str = "Qwen/Qwen3-VL-7B-Instruct",
         tensor_parallel_size: int = 1,
-        max_model_len: int = 8192
+        max_model_len: int = 32768
     ):
         super().__init__("BrainAdapter")
         self.model_path = model_path

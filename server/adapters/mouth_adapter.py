@@ -46,7 +46,7 @@ class MouthAdapter(BaseAdapter):
         "Neutral": "用自然的声音说"
     }
     
-    def __init__(self, model_path: str = "FunAudioLLM/CosyVoice-300M-Instruct"):
+    def __init__(self, model_path: str = "FunAudioLLM/CosyVoice2-0.5B"):
         super().__init__("MouthAdapter")
         self.model_path = model_path
         self.model = None
