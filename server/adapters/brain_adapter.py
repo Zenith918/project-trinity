@@ -83,12 +83,13 @@ IMPORTANT:
                 "max_model_len": self.max_model_len,
                 "trust_remote_code": True,
                 "gpu_memory_utilization": 0.85,  # 预留 15% 显存给其他组件
+                "dtype": "float16",  # AWQ 量化需要 float16，不支持 bfloat16
             }
             
             # 如果使用量化
             if self.quantization:
                 llm_kwargs["quantization"] = self.quantization
-                logger.info(f"启用 {self.quantization.upper()} 量化，预计显存占用 ~6-8GB")
+                logger.info(f"启用 {self.quantization.upper()} 量化 (float16)，预计显存占用 ~6-8GB")
             
             self.llm = LLM(**llm_kwargs)
             
