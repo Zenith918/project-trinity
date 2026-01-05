@@ -25,18 +25,20 @@ class ServerSettings(BaseSettings):
 
 
 class ModelSettings(BaseSettings):
-    """AI 模型配置 - 2026 SOTA 版本"""
+    """AI 模型配置 - 2026 SOTA 版本 (RTX 4090 24GB 优化)"""
     
-    # Qwen3-VL (Brain) - 2025年4月发布
-    qwen_model_path: str = "Qwen/Qwen3-VL-7B-Instruct"
+    # Qwen3-VL (Brain) - 使用 AWQ 4-bit 量化版本节省显存
+    # 8B 模型 INT4 量化后约 6-8GB 显存
+    qwen_model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct-AWQ"  # AWQ 量化版
     qwen_tensor_parallel_size: int = 1
-    qwen_max_model_len: int = 32768  # Qwen3 支持更长上下文
+    qwen_max_model_len: int = 16384  # 适当降低以节省显存
+    qwen_quantization: str = "awq"   # 使用 AWQ 量化
     
-    # FunASR (Ears) - SenseVoice 最新版
+    # FunASR (Ears) - SenseVoice 最新版 (~1-2GB)
     funasr_model: str = "iic/SenseVoiceSmall"
     funasr_device: str = "cuda:0"
     
-    # CosyVoice 3.0 (Mouth) - 2025年12月发布
+    # CosyVoice 3.0 (Mouth) - 0.5B 版本 (~2-3GB)
     cosyvoice_model_path: str = "FunAudioLLM/CosyVoice2-0.5B"
     
     # GeneFace++ (Driver)

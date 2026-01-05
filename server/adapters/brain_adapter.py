@@ -54,34 +54,46 @@ IMPORTANT:
 
     def __init__(
         self,
-        model_path: str = "Qwen/Qwen3-VL-7B-Instruct",
+        model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
         tensor_parallel_size: int = 1,
-        max_model_len: int = 32768
+        max_model_len: int = 16384,
+        quantization: str = "awq"  # AWQ 4-bit 量化节省显存
     ):
         super().__init__("BrainAdapter")
         self.model_path = model_path
         self.tensor_parallel_size = tensor_parallel_size
         self.max_model_len = max_model_len
+        self.quantization = quantization
         self.llm = None
         self.tokenizer = None
         self.persona = "Gentle Girlfriend, supportive partner, intellectually curious"
         
     async def initialize(self) -> bool:
-        """初始化 vLLM 引擎"""
+        """初始化 vLLM 引擎 (支持 AWQ 量化)"""
         try:
             logger.info(f"正在初始化 Qwen VL 模型: {self.model_path}")
+            logger.info(f"量化方式: {self.quantization} | 显存优化模式")
             
             from vllm import LLM, SamplingParams
             
-            self.llm = LLM(
-                model=self.model_path,
-                tensor_parallel_size=self.tensor_parallel_size,
-                max_model_len=self.max_model_len,
-                trust_remote_code=True
-            )
+            # 构建 vLLM 参数
+            llm_kwargs = {
+                "model": self.model_path,
+                "tensor_parallel_size": self.tensor_parallel_size,
+                "max_model_len": self.max_model_len,
+                "trust_remote_code": True,
+                "gpu_memory_utilization": 0.85,  # 预留 15% 显存给其他组件
+            }
+            
+            # 如果使用量化
+            if self.quantization:
+                llm_kwargs["quantization"] = self.quantization
+                logger.info(f"启用 {self.quantization.upper()} 量化，预计显存占用 ~6-8GB")
+            
+            self.llm = LLM(**llm_kwargs)
             
             self.is_initialized = True
-            logger.success(f"Qwen VL 模型初始化成功")
+            logger.success(f"Qwen VL 模型初始化成功 (量化: {self.quantization})")
             return True
             
         except Exception as e:
