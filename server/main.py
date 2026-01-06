@@ -12,13 +12,28 @@ Project Trinity - Server Entry Point
 import sys
 import os
 
-# 确保 server 目录在 Python 路径中
+# ============== 路径黑科技 ==============
+# 强制将 server 目录加入路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 添加 CosyVoice 路径（必须在导入 adapters 之前）
+# 强制将 CosyVoice 加入路径 (最高优先级)
 COSYVOICE_PATH = "/workspace/CosyVoice"
-if os.path.exists(COSYVOICE_PATH) and COSYVOICE_PATH not in sys.path:
+if os.path.exists(COSYVOICE_PATH):
+    # 移除已存在的路径以防止重复，然后插入到最前面
+    if COSYVOICE_PATH in sys.path:
+        sys.path.remove(COSYVOICE_PATH)
     sys.path.insert(0, COSYVOICE_PATH)
+    print(f"✅ 已强制添加 CosyVoice 路径: {COSYVOICE_PATH}")
+    
+    # 验证是否能导入
+    try:
+        import cosyvoice
+        print(f"✅ CosyVoice 模块验证成功: {cosyvoice.__file__}")
+    except ImportError as e:
+        print(f"❌ CosyVoice 模块验证失败: {e}")
+else:
+    print(f"⚠️ 未找到 CosyVoice 目录: {COSYVOICE_PATH}")
+# ========================================
 
 import asyncio
 from contextlib import asynccontextmanager
