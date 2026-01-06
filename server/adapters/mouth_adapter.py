@@ -8,11 +8,18 @@ Project Trinity - Mouth Adapter (CosyVoice)
 - 低延迟流式输出
 """
 
+import sys
+import os
 from typing import Optional, Dict, Any, AsyncGenerator
 from dataclasses import dataclass
 import asyncio
 import numpy as np
 from loguru import logger
+
+# 添加 CosyVoice 本地路径
+COSYVOICE_PATH = "/workspace/CosyVoice"
+if os.path.exists(COSYVOICE_PATH) and COSYVOICE_PATH not in sys.path:
+    sys.path.insert(0, COSYVOICE_PATH)
 
 from .base_adapter import BaseAdapter
 
@@ -57,24 +64,42 @@ class MouthAdapter(BaseAdapter):
         try:
             logger.info(f"正在初始化 CosyVoice 模型: {self.model_path}")
             
-            # CosyVoice 3.0 初始化 - 尝试多种导入方式
+            # 检查本地模型路径
+            if os.path.exists(self.model_path):
+                logger.info(f"使用本地模型: {self.model_path}")
+            
+            # CosyVoice 初始化 - 尝试多种导入方式
+            cosyvoice_loaded = False
+            
+            # 方式1: CosyVoice CLI (推荐)
             try:
-                # 方式1: 官方 CLI 接口
                 from cosyvoice.cli.cosyvoice import CosyVoice
                 self.model = CosyVoice(self.model_path)
-            except ImportError:
-                try:
-                    # 方式2: 直接导入
-                    from cosyvoice import CosyVoice
-                    self.model = CosyVoice(self.model_path)
-                except ImportError:
-                    # 方式3: 使用 CosyVoice2
-                    from cosyvoice.cosyvoice import CosyVoice2
-                    self.model = CosyVoice2(self.model_path)
+                cosyvoice_loaded = True
+                logger.info("使用 CosyVoice CLI 模式")
+            except ImportError as e:
+                logger.debug(f"CosyVoice CLI 导入失败: {e}")
+            except Exception as e:
+                logger.debug(f"CosyVoice CLI 初始化失败: {e}")
             
-            self.is_initialized = True
-            logger.success("CosyVoice 模型初始化成功")
-            return True
+            # 方式2: CosyVoice2
+            if not cosyvoice_loaded:
+                try:
+                    from cosyvoice.cli.cosyvoice import CosyVoice2
+                    self.model = CosyVoice2(self.model_path, load_jit=False, load_trt=False)
+                    cosyvoice_loaded = True
+                    logger.info("使用 CosyVoice2 模式")
+                except ImportError as e:
+                    logger.debug(f"CosyVoice2 导入失败: {e}")
+                except Exception as e:
+                    logger.debug(f"CosyVoice2 初始化失败: {e}")
+            
+            if cosyvoice_loaded:
+                self.is_initialized = True
+                logger.success("CosyVoice 模型初始化成功")
+                return True
+            else:
+                raise ImportError("无法导入 CosyVoice 模块")
             
         except Exception as e:
             logger.error(f"CosyVoice 初始化失败: {e}")
