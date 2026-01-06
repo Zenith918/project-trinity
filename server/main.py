@@ -86,41 +86,55 @@ async def lifespan(app: FastAPI):
     # 初始化适配器 (可选，根据环境决定是否加载模型)
     if not settings.server.debug:
         # 生产环境: 加载所有模型
-        voice_adapter = VoiceAdapter(
-            model_name=settings.model.funasr_model,
-            device=settings.model.funasr_device
-        )
+        # 改为串行初始化，确保 CosyVoice 优先加载，避免被其他组件干扰
+        logger.info("--- 开始串行初始化组件 ---")
         
-        brain_adapter = BrainAdapter(
-            model_path=settings.model.qwen_model_path,
-            tensor_parallel_size=settings.model.qwen_tensor_parallel_size
-        )
+        # 1. 嘴巴 (CosyVoice) - 优先初始化，确保路径没问题
+        try:
+            logger.info("正在初始化 MouthAdapter...")
+            mouth_adapter = MouthAdapter(
+                model_path=settings.model.cosyvoice_model_path
+            )
+            await mouth_adapter.initialize()
+            logger.success("✓ Mouth Adapter 初始化完成")
+        except Exception as e:
+            logger.error(f"✗ Mouth Adapter 失败: {e}")
+
+        # 2. 大脑 (Qwen) - 最吃资源
+        try:
+            logger.info("正在初始化 BrainAdapter...")
+            brain_adapter = BrainAdapter(
+                model_path=settings.model.qwen_model_path,
+                tensor_parallel_size=settings.model.qwen_tensor_parallel_size
+            )
+            await brain_adapter.initialize()
+            logger.success("✓ Brain Adapter 初始化完成")
+        except Exception as e:
+            logger.error(f"✗ Brain Adapter 失败: {e}")
+
+        # 3. 听觉 (SenseVoice)
+        try:
+            logger.info("正在初始化 VoiceAdapter...")
+            voice_adapter = VoiceAdapter(
+                model_name=settings.model.funasr_model,
+                device=settings.model.funasr_device
+            )
+            await voice_adapter.initialize()
+            logger.success("✓ Voice Adapter 初始化完成")
+        except Exception as e:
+            logger.error(f"✗ Voice Adapter 失败: {e}")
+            
+        # 4. 表情 (GeneFace)
+        try:
+            logger.info("正在初始化 DriverAdapter...")
+            driver_adapter = DriverAdapter(
+                model_path=settings.model.geneface_model_path
+            )
+            await driver_adapter.initialize()
+            logger.success("✓ Driver Adapter 初始化完成")
+        except Exception as e:
+            logger.error(f"✗ Driver Adapter 失败: {e}")
         
-        mouth_adapter = MouthAdapter(
-            model_path=settings.model.cosyvoice_model_path
-        )
-        
-        driver_adapter = DriverAdapter(
-            model_path=settings.model.geneface_model_path
-        )
-        
-        # 并行初始化所有适配器
-        results = await asyncio.gather(
-            voice_adapter.initialize(),
-            brain_adapter.initialize(),
-            mouth_adapter.initialize(),
-            driver_adapter.initialize(),
-            return_exceptions=True
-        )
-        
-        for name, result in zip(
-            ["Voice", "Brain", "Mouth", "Driver"],
-            results
-        ):
-            if isinstance(result, Exception):
-                logger.error(f"✗ {name} Adapter 初始化失败: {result}")
-            elif result:
-                logger.success(f"✓ {name} Adapter 初始化完成")
     else:
         logger.warning("⚠ Debug 模式: 跳过模型加载")
         # Debug 模式使用 Mock
