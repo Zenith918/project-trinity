@@ -16,6 +16,10 @@ class ServerSettings(BaseSettings):
     port: int = 8000
     debug: bool = False
     
+    # 显存监控阈值 (MB)
+    vram_warning_threshold: int = 22000  # 22GB
+    vram_critical_threshold: int = 23500 # 23.5GB
+    
     # WebSocket 设置
     ws_max_connections: int = 100
     ws_heartbeat_interval: int = 30
@@ -27,17 +31,19 @@ class ServerSettings(BaseSettings):
 class ModelSettings(BaseSettings):
     """AI 模型配置 - 2026 SOTA 版本 (RTX 4090 24GB 优化)"""
     
-    # Qwen3-VL (Brain) - 使用 AWQ 4-bit 量化版本节省显存
-    # 8B 模型 INT4 量化后约 6-8GB 显存
-    qwen_model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct-AWQ"  # AWQ 量化版
+    # Qwen3-VL (Brain) - 方案 B: 使用 2.5 AWQ 版本以节省显存给 GeneFace
+    # 路径回退到 AWQ 版
+    qwen_model_path: str = "/workspace/project-trinity/models/Qwen2-VL-7B-Instruct-AWQ"
     qwen_tensor_parallel_size: int = 1
-    qwen_max_model_len: int = 16384  # 适当降低以节省显存
-    qwen_quantization: str = "awq"   # 使用 AWQ 量化
-    # 降低显存占用率以留出空间给 CosyVoice (0.8 * 24GB ≈ 19.2GB)
-    qwen_gpu_memory_utilization: float = 0.8
+    qwen_max_model_len: int = 8192  # 恢复到 8k，因为显存压力主要来自碎片
+    qwen_quantization: Optional[str] = "awq"
     
-    # FunASR (Ears) - SenseVoice 最新版 (~1-2GB)
-    funasr_model: str = "iic/SenseVoiceSmall"
+    # 显存利用率: 24GB * 0.75 ≈ 18GB
+    # AWQ 模型本身约 6.5GB，加上 KV Cache
+    qwen_gpu_memory_utilization: float = 0.75
+    
+    # FunASR (Ears) - SenseVoice 本地路径
+    funasr_model: str = "/workspace/project-trinity/models/SenseVoiceSmall"
     funasr_device: str = "cuda:0"
     
     # CosyVoice 3.0 (Mouth) - 使用本地克隆的模型
@@ -46,9 +52,6 @@ class ModelSettings(BaseSettings):
     
     # GeneFace++ (Driver) - 实时3D说话人面部生成
     # GitHub: https://github.com/yerfor/GeneFace
-    geneface_model_path: str = "models/geneface"
-    
-    # GeneFace++ (Driver)
     geneface_model_path: str = "models/geneface"
     
     class Config:

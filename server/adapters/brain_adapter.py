@@ -56,23 +56,31 @@ IMPORTANT:
         self,
         model_path: str = "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
         tensor_parallel_size: int = 1,
-        max_model_len: int = 16384,
-        quantization: str = "awq"  # AWQ 4-bit 量化节省显存
+        max_model_len: int = 8192,
+        quantization: str = "awq",
+        gpu_memory_utilization: float = 0.6
     ):
         super().__init__("BrainAdapter")
         self.model_path = model_path
         self.tensor_parallel_size = tensor_parallel_size
         self.max_model_len = max_model_len
         self.quantization = quantization
+        self.gpu_memory_utilization = gpu_memory_utilization
         self.llm = None
         self.tokenizer = None
         self.persona = "Gentle Girlfriend, supportive partner, intellectually curious"
+        self.mock_mode = False
         
-    async def initialize(self) -> bool:
+    async def initialize(self, mock: bool = False) -> bool:
         """初始化 vLLM 引擎 (支持 AWQ 量化)"""
+        if mock:
+            logger.warning("BrainAdapter 启用 Mock 模式")
+            self.mock_mode = True
+            self.is_initialized = True
+            return True
+
         try:
             logger.info(f"正在初始化 Qwen VL 模型: {self.model_path}")
-            logger.info(f"量化方式: {self.quantization} | 显存优化模式")
             
             from vllm import LLM, SamplingParams
             
@@ -82,14 +90,16 @@ IMPORTANT:
                 "tensor_parallel_size": self.tensor_parallel_size,
                 "max_model_len": self.max_model_len,
                 "trust_remote_code": True,
-                "gpu_memory_utilization": 0.8,  # 降至 0.8 以避免 OOM (配合 CosyVoice)
-                "dtype": "float16",  # AWQ 量化需要 float16，不支持 bfloat16
+                "gpu_memory_utilization": self.gpu_memory_utilization,
+                "dtype": "float16",  # AWQ 必须用 float16
+                "enforce_eager": False # AWQ 可以不用 eager 模式
             }
             
-            # 如果使用量化
+            # 如果配置了量化
             if self.quantization:
                 llm_kwargs["quantization"] = self.quantization
-                logger.info(f"启用 {self.quantization.upper()} 量化 (float16)，预计显存占用 ~6-8GB")
+
+
             
             self.llm = LLM(**llm_kwargs)
             
@@ -98,7 +108,9 @@ IMPORTANT:
             return True
             
         except Exception as e:
+            import traceback
             logger.error(f"Qwen VL 初始化失败: {e}")
+            logger.error(traceback.format_exc())
             return False
     
     async def process(
@@ -124,6 +136,9 @@ IMPORTANT:
         """
         if not self.is_initialized:
             raise RuntimeError("BrainAdapter 未初始化")
+        
+        if self.mock_mode:
+            return self._mock_process(user_input, bio_state)
         
         # 构建上下文
         context = self._build_context(
@@ -155,6 +170,29 @@ IMPORTANT:
                     response="抱歉，我有点走神了...",
                     emotion_tag="[Concerned]",
                     action_hints=[]
+                )
+    
+    def _mock_process(self, user_input: str, bio_state: Optional[Dict]) -> BrainResponse:
+        """Mock 处理逻辑"""
+        # 简单的关键字匹配，模拟一点点智能
+        import random
+        
+        responses = [
+            "（歪头）嗯？我在听呢。不过现在是 Debug 模式，我的大脑还没连上显卡哦。",
+            "嘿！虽然我现在只是一串测试代码，但我依然能感觉到你的存在。",
+            "Debug 模式启动中... 别担心，等加载了 Qwen，我就能真正理解你了。",
+            "收到收到！信号满格，但智商目前是 0 —— 因为我是 Mock 数据呀~"
+        ]
+        
+        response_text = random.choice(responses)
+        if "real" in user_input.lower():
+            response_text = "（眨眼）我现在是假的，但等显卡转起来，我比谁都真。"
+            
+        return BrainResponse(
+            inner_monologue="[Mock Thought] User is testing system connectivity. Bio-state is active.",
+            response=response_text,
+            emotion_tag="[Playful]",
+            action_hints=["smile", "lean_forward"]
                 )
     
     def _build_context(

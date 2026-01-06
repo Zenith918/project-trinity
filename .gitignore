@@ -25,6 +25,7 @@ venv/
 ENV/
 env/
 .venv/
+env_avatar/
 
 # IDE
 .idea/

@@ -40,18 +40,22 @@ from contextlib import asynccontextmanager
 from typing import Optional
 import json
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from loguru import logger
 import uvicorn
+import shutil
+import uuid
+from pathlib import Path
 
 from config import settings
 from adapters import VoiceAdapter, BrainAdapter, MouthAdapter, DriverAdapter
 from mind_engine import BioState, NarrativeManager, EgoDirector
-
+from monitor import SystemMonitor
 
 # ============== 全局组件 ==============
+monitor: Optional[SystemMonitor] = None
 voice_adapter: Optional[VoiceAdapter] = None
 brain_adapter: Optional[BrainAdapter] = None
 mouth_adapter: Optional[MouthAdapter] = None
@@ -67,8 +71,12 @@ ego_director: Optional[EgoDirector] = None
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     global voice_adapter, brain_adapter, mouth_adapter, driver_adapter
-    global bio_state, narrative_mgr, ego_director
+    global bio_state, narrative_mgr, ego_director, monitor
     
+    # 启动资源监控
+    monitor = SystemMonitor()
+    monitor.start()
+
     logger.info("🔮 Project Trinity 启动中...")
     
     # 初始化 Layer 1: 本我 (BioState)
@@ -86,12 +94,29 @@ async def lifespan(app: FastAPI):
     # 初始化适配器 (可选，根据环境决定是否加载模型)
     if not settings.server.debug:
         # 生产环境: 加载所有模型
-        # 改为串行初始化，确保 CosyVoice 优先加载，避免被其他组件干扰
+        # 改为串行初始化，确保 Qwen (Brain) 优先加载，抢占大块显存
         logger.info("--- 开始串行初始化组件 ---")
         
-        # 1. 嘴巴 (CosyVoice) - 优先初始化，确保路径没问题
+        # 1. 大脑 (Qwen) - 最吃显存，必须第一个加载
         try:
-            logger.info("正在初始化 MouthAdapter...")
+            logger.info("正在初始化 BrainAdapter (Priority 1)...")
+            brain_adapter = BrainAdapter(
+                model_path=settings.model.qwen_model_path,
+                tensor_parallel_size=settings.model.qwen_tensor_parallel_size,
+                max_model_len=settings.model.qwen_max_model_len,
+                quantization=settings.model.qwen_quantization,
+                gpu_memory_utilization=settings.model.qwen_gpu_memory_utilization
+            )
+            await brain_adapter.initialize()
+            if not brain_adapter.is_initialized:
+                raise RuntimeError("BrainAdapter 初始化失败")
+            logger.success("✓ Brain Adapter 初始化完成")
+        except Exception as e:
+            logger.error(f"✗ Brain Adapter 失败: {e}")
+
+        # 2. 嘴巴 (CosyVoice) - 显存占用第二
+        try:
+            logger.info("正在初始化 MouthAdapter (Priority 2)...")
             mouth_adapter = MouthAdapter(
                 model_path=settings.model.cosyvoice_model_path
             )
@@ -99,18 +124,6 @@ async def lifespan(app: FastAPI):
             logger.success("✓ Mouth Adapter 初始化完成")
         except Exception as e:
             logger.error(f"✗ Mouth Adapter 失败: {e}")
-
-        # 2. 大脑 (Qwen) - 最吃资源
-        try:
-            logger.info("正在初始化 BrainAdapter...")
-            brain_adapter = BrainAdapter(
-                model_path=settings.model.qwen_model_path,
-                tensor_parallel_size=settings.model.qwen_tensor_parallel_size
-            )
-            await brain_adapter.initialize()
-            logger.success("✓ Brain Adapter 初始化完成")
-        except Exception as e:
-            logger.error(f"✗ Brain Adapter 失败: {e}")
 
         # 3. 听觉 (SenseVoice)
         try:
@@ -128,7 +141,7 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("正在初始化 DriverAdapter...")
             driver_adapter = DriverAdapter(
-                model_path=settings.model.geneface_model_path
+                geneface_path=settings.model.geneface_model_path
             )
             await driver_adapter.initialize()
             logger.success("✓ Driver Adapter 初始化完成")
@@ -138,7 +151,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("⚠ Debug 模式: 跳过模型加载")
         # Debug 模式使用 Mock
-        brain_adapter = BrainAdapter()  # 不初始化
+        brain_adapter = BrainAdapter()
+        await brain_adapter.initialize(mock=True)
     
     # 初始化 Layer 3: 自我 (EgoDirector)
     if brain_adapter:
@@ -156,6 +170,9 @@ async def lifespan(app: FastAPI):
     # 清理
     logger.info("正在关闭 Project Trinity...")
     
+    if monitor:
+        monitor.stop()
+
     if voice_adapter:
         await voice_adapter.shutdown()
     if brain_adapter:
@@ -235,6 +252,50 @@ async def health_check():
     status = "healthy" if all(components.values()) else "degraded"
     
     return HealthResponse(status=status, components=components)
+
+
+@app.post("/avatar/generate")
+async def generate_avatar(
+    background_tasks: BackgroundTasks,
+    image: UploadFile = File(...)
+):
+    """
+    [FastAvatar] 从照片生成 3DGS 资产
+    这是一个耗时操作，将在后台运行。
+    """
+    if not driver_adapter:
+        raise HTTPException(status_code=503, detail="DriverAdapter 未初始化")
+        
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    
+    file_ext = image.filename.split(".")[-1]
+    file_id = str(uuid.uuid4())
+    image_path = upload_dir / f"{file_id}.{file_ext}"
+    output_dir = Path("assets/avatars") / file_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    with open(image_path, "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+        
+    logger.info(f"收到 Avatar 生成请求: {image.filename} -> {file_id}")
+    
+    # 异步执行生成任务
+    async def _run_generation():
+        success = await driver_adapter.generate_avatar(str(image_path), str(output_dir))
+        if success:
+            logger.success(f"Avatar 生成完成: {file_id}")
+            # TODO: 通知客户端或更新数据库
+        else:
+            logger.error(f"Avatar 生成失败: {file_id}")
+
+    background_tasks.add_task(_run_generation)
+    
+    return {
+        "status": "processing", 
+        "task_id": file_id,
+        "message": "Avatar 生成任务已提交，请稍候。"
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
