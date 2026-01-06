@@ -82,7 +82,7 @@ IMPORTANT:
                 "tensor_parallel_size": self.tensor_parallel_size,
                 "max_model_len": self.max_model_len,
                 "trust_remote_code": True,
-                "gpu_memory_utilization": 0.85,  # 预留 15% 显存给其他组件
+                "gpu_memory_utilization": 0.8,  # 降至 0.8 以避免 OOM (配合 CosyVoice)
                 "dtype": "float16",  # AWQ 量化需要 float16，不支持 bfloat16
             }
             

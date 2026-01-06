@@ -33,6 +33,8 @@ class ModelSettings(BaseSettings):
     qwen_tensor_parallel_size: int = 1
     qwen_max_model_len: int = 16384  # 适当降低以节省显存
     qwen_quantization: str = "awq"   # 使用 AWQ 量化
+    # 降低显存占用率以留出空间给 CosyVoice (0.8 * 24GB ≈ 19.2GB)
+    qwen_gpu_memory_utilization: float = 0.8
     
     # FunASR (Ears) - SenseVoice 最新版 (~1-2GB)
     funasr_model: str = "iic/SenseVoiceSmall"
