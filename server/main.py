@@ -15,6 +15,11 @@ import os
 # 确保 server 目录在 Python 路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 添加 CosyVoice 路径（必须在导入 adapters 之前）
+COSYVOICE_PATH = "/workspace/CosyVoice"
+if os.path.exists(COSYVOICE_PATH) and COSYVOICE_PATH not in sys.path:
+    sys.path.insert(0, COSYVOICE_PATH)
+
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
