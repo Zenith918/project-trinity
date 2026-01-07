@@ -36,12 +36,15 @@ else:
 # ========================================
 
 import asyncio
+import time
+from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
 import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from loguru import logger
 import uvicorn
@@ -53,6 +56,34 @@ from config import settings
 from adapters import VoiceAdapter, BrainAdapter, MouthAdapter, DriverAdapter
 from mind_engine import BioState, NarrativeManager, EgoDirector
 from monitor import SystemMonitor
+
+def write_chat_log(log_data: dict):
+    try:
+        import json
+        import os
+        
+        # 计算统计数据
+        total_time_s = time.time() - log_data["start"]
+        speed = len(log_data["output"]) / total_time_s if total_time_s > 0 else 0
+        
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "input": log_data["input"],
+            "output": log_data["output"],
+            "metrics": {
+                "ttft_ms": round(log_data.get("ttft", 0), 2),
+                "total_time_s": round(total_time_s, 2),
+                "speed_char_per_s": round(speed, 2)
+            }
+        }
+        
+        log_path = "/root/.cursor/worktrees/project-trinity__SSH__runpod-trinity-new_/klm/logs/chat_history.jsonl"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        logger.info(f"📝 Log saved via BackgroundTasks: {len(entry['output'])} chars")
+            
+    except Exception as e:
+        logger.error(f"Failed to save log via BackgroundTasks: {e}")
 
 # ============== 全局组件 ==============
 monitor: Optional[SystemMonitor] = None
@@ -228,6 +259,72 @@ class HealthResponse(BaseModel):
 
 
 # ============== API 路由 ==============
+
+# 挂载 Web 客户端 (LLM Workbench)
+from fastapi.staticfiles import StaticFiles
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "client/llm_workbench")
+if os.path.exists(static_dir):
+    app.mount("/workbench", StaticFiles(directory=static_dir, html=True), name="workbench")
+    logger.info(f"Workbench mounted at /workbench -> {static_dir}")
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest, background_tasks: BackgroundTasks):
+    """
+    流式对话接口 (Real-Time Reflex)
+    直接连接 BrainAdapter，绕过 EgoDirector 的部分逻辑以测试极致速度
+    """
+    if not brain_adapter:
+        raise HTTPException(status_code=503, detail="BrainAdapter 未初始化")
+        
+    logger.info(f"Stream Request: {request.text[:50]}...")
+    
+    # 准备日志数据容器（可变对象）
+    log_data = {
+        "input": request.text,
+        "output": "",
+        "ttft": 0,
+        "start": time.time()
+    }
+    
+    # 添加后台任务，在响应结束后执行
+    background_tasks.add_task(write_chat_log, log_data)
+    
+    async def event_generator():
+        # 记录开始时间
+        start_time = log_data["start"]
+        first_token_sent = False
+        
+        try:
+            # 直接调用 BrainAdapter 的流式方法
+            generator = brain_adapter.process_stream(
+                user_input=request.text,
+                temperature=0.7 
+            )
+            
+            async for chunk in generator:
+                if chunk["type"] == "token":
+                    content = chunk["content"]
+                    log_data["output"] += content # 实时更新日志容器
+                    
+                    yield content
+                    
+                    if not first_token_sent:
+                        first_token_sent = True
+                        ttft_ms = (time.time() - start_time) * 1000
+                        log_data["ttft"] = ttft_ms
+                        logger.info(f"⚡ Stream TTFT: {ttft_ms:.2f}ms")
+                        
+                elif chunk["type"] == "error":
+                    error_msg = f"[ERROR: {chunk['content']}]"
+                    log_data["output"] += error_msg
+                    yield error_msg
+                    
+        except Exception as e:
+            logger.error(f"Stream Error: {e}")
+            yield f"[SYSTEM ERROR: {str(e)}]"
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 @app.get("/")
 async def root():
     """根路由"""
@@ -404,4 +501,3 @@ if __name__ == "__main__":
         port=settings.server.port,
         reload=settings.server.debug
     )
-

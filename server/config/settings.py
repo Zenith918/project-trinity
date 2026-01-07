@@ -31,28 +31,24 @@ class ServerSettings(BaseSettings):
 class ModelSettings(BaseSettings):
     """AI 模型配置 - 2026 SOTA 版本 (RTX 4090 24GB 优化)"""
     
-    # Qwen3-VL (Brain) - 方案 B: 使用 2.5 AWQ 版本以节省显存给 GeneFace
-    # 路径回退到 AWQ 版
-    qwen_model_path: str = "/workspace/project-trinity/models/Qwen2-VL-7B-Instruct-AWQ"
+    # Qwen 2.5-VL (Brain) - 使用 AWQ 量化版以节省显存
+    qwen_model_path: str = "/workspace/models/Qwen2.5-VL-7B-Instruct-AWQ"
     qwen_tensor_parallel_size: int = 1
-    qwen_max_model_len: int = 8192  # 恢复到 8k，因为显存压力主要来自碎片
+    qwen_max_model_len: int = 4096  # 限制 context 以节省显存
     qwen_quantization: Optional[str] = "awq"
     
-    # 显存利用率: 24GB * 0.75 ≈ 18GB
-    # AWQ 模型本身约 6.5GB，加上 KV Cache
-    qwen_gpu_memory_utilization: float = 0.75
+    # 显存利用率: 24GB * 0.5 ≈ 12GB for Qwen
+    qwen_gpu_memory_utilization: float = 0.5
     
     # FunASR (Ears) - SenseVoice 本地路径
-    funasr_model: str = "/workspace/project-trinity/models/SenseVoiceSmall"
+    funasr_model: str = "/workspace/models/SenseVoiceSmall"
     funasr_device: str = "cuda:0"
     
-    # CosyVoice 3.0 (Mouth) - 使用本地克隆的模型
-    # 路径: /workspace/CosyVoice
-    cosyvoice_model_path: str = "/workspace/CosyVoice/pretrained_models/CosyVoice-300M"
+    # CosyVoice 3.0 (Mouth) - 使用 Fun-CosyVoice3-0.5B-2512
+    cosyvoice_model_path: str = "/workspace/models/CosyVoice3-0.5B"
     
-    # GeneFace++ (Driver) - 实时3D说话人面部生成
-    # GitHub: https://github.com/yerfor/GeneFace
-    geneface_model_path: str = "models/geneface"
+    # GeneFace++ (Driver) - Audio2Motion
+    geneface_model_path: str = "/workspace/code/GeneFacePlusPlus"
     
     class Config:
         env_prefix = "MODEL_"
@@ -115,4 +111,3 @@ class Settings:
 
 # 全局配置实例
 settings = Settings()
-

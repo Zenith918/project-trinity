@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Trinity - Phase 1</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-card: #12121a;
+            --accent-primary: #00ffcc;
+            --accent-secondary: #ff00aa;
+            --accent-tertiary: #6600ff;
+            --text-primary: #e0e0e0;
+            --text-secondary: #888;
+            --border-glow: rgba(0, 255, 204, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(ellipse at 20% 20%, rgba(102, 0, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(255, 0, 170, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(0, 255, 204, 0.05) 0%, transparent 70%);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 2rem;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--accent-primary);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Avatar Section */
+        .avatar-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .avatar-canvas-container {
+            position: relative;
+            background: var(--bg-card);
+            border-radius: 24px;
+            overflow: hidden;
+            aspect-ratio: 16/12;
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 
+                0 0 60px rgba(0, 255, 204, 0.1),
+                inset 0 0 60px rgba(0, 0, 0, 0.5);
+        }
+
+        #avatar-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .avatar-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .avatar-placeholder svg {
+            width: 120px;
+            height: 120px;
+            opacity: 0.3;
+            margin-bottom: 1rem;
+        }
+
+        /* Bio State Display */
+        .bio-state-panel {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .bio-state-panel h3 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .bio-bar {
+            margin-bottom: 1rem;
+        }
+
+        .bio-bar label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .bio-bar .bar-bg {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .bio-bar .bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .bar-fill.cortisol {
+            background: linear-gradient(90deg, #ff6b6b, #ff4444);
+        }
+
+        .bar-fill.dopamine {
+            background: linear-gradient(90deg, #4ecdc4, var(--accent-primary));
+        }
+
+        /* Chat Section */
+        .chat-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .chat-container {
+            flex: 1;
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            max-height: 60vh;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message .bubble {
+            display: inline-block;
+            max-width: 85%;
+            padding: 0.75rem 1rem;
+            border-radius: 16px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .message.user .bubble {
+            background: linear-gradient(135deg, var(--accent-tertiary), var(--accent-secondary));
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .bubble {
+            background: rgba(255,255,255,0.08);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message .meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+        }
+
+        .message .emotion-tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            background: rgba(0, 255, 204, 0.2);
+            border-radius: 10px;
+            color: var(--accent-primary);
+            margin-left: 0.5rem;
+        }
+
+        /* Input Area */
+        .input-area {
+            display: flex;
+            gap: 0.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .input-area input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .input-area input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .input-area button {
+            background: linear-gradient(135deg, var(--accent-primary), #00cc99);
+            border: none;
+            border-radius: 12px;
+            padding: 0 1.5rem;
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .input-area button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 255, 204, 0.4);
+        }
+
+        .input-area button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Controls */
+        .controls {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .controls h3 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .control-btn {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .control-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: var(--accent-primary);
+        }
+
+        .control-btn.active {
+            background: rgba(0, 255, 204, 0.15);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .avatar-canvas-container {
+                aspect-ratio: 16/9;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Project Trinity</div>
+            <div class="status-badge">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">未连接</span>
+            </div>
+        </header>
+
+        <main class="avatar-section">
+            <div class="avatar-canvas-container">
+                <canvas id="avatar-canvas"></canvas>
+                <div class="avatar-placeholder" id="avatar-placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/>
+                        <path d="M20 21v-2a7 7 0 0 0-7-7H11a7 7 0 0 0-7 7v2"/>
+                    </svg>
+                    <p>Phase 1: 等待 3DGS 模型加载</p>
+                </div>
+            </div>
+
+            <div class="bio-state-panel">
+                <h3>生物状态 (Layer 1: 本我)</h3>
+                <div class="bio-bar">
+                    <label>
+                        <span>皮质醇 (压力)</span>
+                        <span id="cortisol-value">30</span>
+                    </label>
+                    <div class="bar-bg">
+                        <div class="bar-fill cortisol" id="cortisol-bar" style="width: 30%"></div>
+                    </div>
+                </div>
+                <div class="bio-bar">
+                    <label>
+                        <span>多巴胺 (愉悦)</span>
+                        <span id="dopamine-value">50</span>
+                    </label>
+                    <div class="bar-bg">
+                        <div class="bar-fill dopamine" id="dopamine-bar" style="width: 50%"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="chat-section">
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message assistant">
+                        <div class="bubble">你好！我是 Trinity，你的数字灵魂伴侣。Phase 1 骨架搭建中...🔮</div>
+                        <div class="meta">系统初始化 <span class="emotion-tag">Neutral</span></div>
+                    </div>
+                </div>
+                <div class="input-area">
+                    <input type="text" id="message-input" placeholder="输入消息..." disabled>
+                    <button id="send-btn" disabled>发送</button>
+                </div>
+            </div>
+
+            <div class="controls">
+                <h3>控制面板</h3>
+                <button class="control-btn" id="connect-btn">连接服务器</button>
+                <button class="control-btn" id="mic-btn">🎤 开启麦克风 (Phase 2)</button>
+                <button class="control-btn" id="cam-btn">📷 开启摄像头 (Phase 2)</button>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // ============== Trinity Client - Phase 1 ==============
+        
+        const API_BASE = 'http://localhost:8000';
+        let ws = null;
+        
+        // DOM 元素
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const connectBtn = document.getElementById('connect-btn');
+        
+        // Bio State 元素
+        const cortisolBar = document.getElementById('cortisol-bar');
+        const cortisolValue = document.getElementById('cortisol-value');
+        const dopamineBar = document.getElementById('dopamine-bar');
+        const dopamineValue = document.getElementById('dopamine-value');
+        
+        // ============== WebSocket 连接 ==============
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                return;
+            }
+            
+            ws = new WebSocket(`ws://${window.location.hostname}:8000/ws`);
+            
+            ws.onopen = () => {
+                statusDot.classList.add('connected');
+                statusText.textContent = '已连接';
+                connectBtn.textContent = '断开连接';
+                connectBtn.classList.add('active');
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                addMessage('assistant', '连接成功！系统已就绪。', 'Happy');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleServerMessage(data);
+            };
+            
+            ws.onclose = () => {
+                statusDot.classList.remove('connected');
+                statusText.textContent = '未连接';
+                connectBtn.textContent = '连接服务器';
+                connectBtn.classList.remove('active');
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+                addMessage('assistant', '连接失败，请检查服务器是否运行。', 'Error');
+            };
+        }
+        
+        // ============== 消息处理 ==============
+        function handleServerMessage(data) {
+            if (data.type === 'response') {
+                addMessage('assistant', data.text, data.emotion);
+                
+                // 更新 Bio State
+                if (data.bio_state) {
+                    updateBioState(data.bio_state);
+                }
+                
+                // 处理反射动作
+                if (data.reflex) {
+                    showReflex(data.reflex);
+                }
+            } else if (data.type === 'heartbeat') {
+                // 静默处理心跳
+            } else if (data.type === 'error') {
+                addMessage('assistant', `错误: ${data.message}`, 'Error');
+            }
+        }
+        
+        function addMessage(role, text, emotion = 'Neutral') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const now = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div class="bubble">${text}</div>
+                <div class="meta">${now} <span class="emotion-tag">${emotion}</span></div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            addMessage('user', text);
+            
+            ws.send(JSON.stringify({
+                type: 'text',
+                data: text,
+                emotion: 'neutral'
+            }));
+            
+            messageInput.value = '';
+        }
+        
+        // ============== Bio State 更新 ==============
+        function updateBioState(state) {
+            if (state.cortisol !== undefined) {
+                const cortisol = Math.min(100, Math.max(0, state.cortisol));
+                cortisolBar.style.width = `${cortisol}%`;
+                cortisolValue.textContent = Math.round(cortisol);
+            }
+            
+            if (state.dopamine !== undefined) {
+                const dopamine = Math.min(100, Math.max(0, state.dopamine));
+                dopamineBar.style.width = `${dopamine}%`;
+                dopamineValue.textContent = Math.round(dopamine);
+            }
+        }
+        
+        function showReflex(reflex) {
+            console.log('触发反射:', reflex);
+            // Phase 2: 在 3D 模型上显示微表情
+        }
+        
+        // ============== 事件绑定 ==============
+        connectBtn.addEventListener('click', connect);
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        // 心跳
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'heartbeat' }));
+            }
+        }, 30000);
+        
+        // ============== Three.js 3DGS 渲染 (Phase 1 占位) ==============
+        // TODO: 加载 LivePortrait 生成的 3DGS 模型
+        // TODO: 接收 FLAME 参数并变形
+        
+        console.log('🔮 Project Trinity Client - Phase 1 Ready');
+    </script>
+</body>
+</html>
+
+
+
