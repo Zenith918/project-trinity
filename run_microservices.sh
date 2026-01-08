@@ -37,17 +37,25 @@ warn() { echo -e "${YELLOW}[Trinity]${NC} $1"; }
 error() { echo -e "${RED}[Trinity]${NC} $1"; }
 
 # ==========================================
-# 0. 系统依赖检查
+# 0. 环境配置 (使用 Network Volume 持久化依赖)
 # ==========================================
-log "检查系统依赖..."
+log "配置环境..."
 
-# FFmpeg (torchaudio 需要)
-if ! which ffmpeg > /dev/null 2>&1; then
-    warn "FFmpeg 未安装，正在安装..."
-    apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1
-    log "✅ FFmpeg 安装完成"
+# 添加持久化的二进制目录到 PATH
+export PATH="/workspace/bin:$PATH"
+
+# 验证 FFmpeg (已预装在 /workspace/bin)
+if [ -x "/workspace/bin/ffmpeg" ]; then
+    log "✅ FFmpeg 已就绪 (Network Volume)"
 else
-    log "✅ FFmpeg 已安装"
+    warn "FFmpeg 未找到，正在下载到 Network Volume..."
+    mkdir -p /workspace/bin
+    cd /workspace/bin
+    wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O ffmpeg.tar.xz
+    tar -xf ffmpeg.tar.xz --strip-components=1
+    rm ffmpeg.tar.xz
+    cd "$PROJECT_ROOT"
+    log "✅ FFmpeg 安装完成"
 fi
 
 # ==========================================
