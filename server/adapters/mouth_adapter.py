@@ -107,8 +107,9 @@ class MouthAdapter(BaseAdapter):
                 async with aiohttp.ClientSession() as session:
                     payload = {
                         "text": text,
-                        "prompt_text": instruction
+                        "instruct_text": instruction  # 改为 instruct_text
                     }
+                    # 注意: remote_url 已经是 http://xxx:9000/mouth
                     async with session.post(f"{self.remote_url}/tts", json=payload) as resp:
                         if resp.status == 200:
                             data = await resp.json()

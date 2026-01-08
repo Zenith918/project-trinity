@@ -4,7 +4,9 @@ import socket
 import psutil
 from loguru import logger
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+import json
 
 # ==========================================
 # 0. 端口抢占与清理 (Port Guard)
@@ -94,9 +96,39 @@ async def health_check():
 
 @app.post("/brain/chat")
 async def chat(request: dict):
+    """非流式聊天 (兼容旧接口)"""
     if not brain or not brain.is_ready:
         return {"error": "Brain not ready"}
     return await brain.generate(request)
+
+@app.post("/brain/chat/stream")
+async def chat_stream(request: dict):
+    """
+    真正的流式聊天 - SSE (Server-Sent Events)
+    每个 token 生成后立即发送，TTFT 目标 <200ms
+    """
+    if not brain or not brain.is_ready:
+        return {"error": "Brain not ready"}
+    
+    async def event_generator():
+        try:
+            async for token in brain.generate_stream(request):
+                # SSE 格式: data: {json}\n\n
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            # 发送结束标记
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # 禁用 nginx 缓冲
+        }
+    )
 
 @app.post("/mouth/tts")
 async def tts(request: dict):

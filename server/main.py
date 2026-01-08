@@ -548,6 +548,113 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket 错误: {e}")
 
 
+# ============== 测试端点 ==============
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    语音识别接口 (ASR)
+    
+    接受音频文件，返回识别文本和情感
+    """
+    if not voice_adapter or not voice_adapter.is_initialized:
+        raise HTTPException(status_code=503, detail="VoiceAdapter 未初始化")
+    
+    try:
+        import io
+        import wave
+        import numpy as np
+        
+        # 读取上传的音频文件
+        audio_bytes = await file.read()
+        
+        # 尝试解析 WAV 格式
+        try:
+            wav_buffer = io.BytesIO(audio_bytes)
+            with wave.open(wav_buffer, 'rb') as wav_file:
+                sample_rate = wav_file.getframerate()
+                n_frames = wav_file.getnframes()
+                audio_data = wav_file.readframes(n_frames)
+                # 转换为 numpy array
+                audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+        except Exception:
+            # 如果不是标准 WAV，尝试直接作为 PCM 处理
+            audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            sample_rate = 16000
+        
+        # 调用 ASR
+        result = await voice_adapter.process(audio_array, sample_rate)
+        
+        return {
+            "text": result.text,
+            "emotion": result.emotion,
+            "confidence": result.confidence,
+            "language": result.language
+        }
+        
+    except Exception as e:
+        logger.error(f"语音识别失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/synthesize")
+async def synthesize_speech(request: dict):
+    """
+    语音合成接口 (TTS)
+    
+    接受文本，返回音频数据
+    """
+    if not mouth_adapter:
+        raise HTTPException(status_code=503, detail="MouthAdapter 未初始化")
+    
+    text = request.get("text", "")
+    instruct_text = request.get("instruct_text", "用温柔甜美的女声说")
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    
+    try:
+        # 调用 TTS
+        result = await mouth_adapter.process(text, instruct_text)
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        # 转换为 WAV 格式返回
+        import io
+        import wave
+        import numpy as np
+        
+        audio_array = np.array(result["audio"], dtype=np.float32)
+        sample_rate = result["sample_rate"]
+        
+        # 转换为 16-bit PCM
+        audio_int16 = (audio_array * 32767).astype(np.int16)
+        
+        # 创建 WAV 文件
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'w') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_int16.tobytes())
+        
+        wav_buffer.seek(0)
+        
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(
+            wav_buffer,
+            media_type="audio/wav",
+            headers={"Content-Disposition": "attachment; filename=speech.wav"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"语音合成失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============== 主入口 ==============
 if __name__ == "__main__":
     uvicorn.run(

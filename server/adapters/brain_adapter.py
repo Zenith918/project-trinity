@@ -157,25 +157,39 @@ Trinity: [调皮] 嘿嘿，你知道吗...（讲笑话）
         system_prompt = self.SYSTEM_PROMPT_TEMPLATE + self.persona
         full_prompt = f"{system_prompt}\n\n{context}\n\nTrinity:"
         
-        # 远程模式处理
+        # 远程模式处理 - 真正的流式传输 (SSE)
         if self.remote_mode:
             import aiohttp
+            import json
             async with aiohttp.ClientSession() as session:
                 try:
-                    payload = {"prompt": full_prompt}
-                    async with session.post(f"{self.remote_url}/chat", json=payload) as resp:
+                    payload = {"prompt": full_prompt, "max_tokens": 256, "temperature": temperature}
+                    # 使用流式端点
+                    async with session.post(
+                        f"{self.remote_url}/chat/stream", 
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=60)
+                    ) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
-                            text = data.get("text", "")
-                            
-                            chunk_size = 4
-                            for i in range(0, len(text), chunk_size):
-                                yield {
-                                    "type": "token",
-                                    "content": text[i:i+chunk_size]
-                                }
+                            # 消费 SSE 流
+                            async for line in resp.content:
+                                line = line.decode('utf-8').strip()
+                                if line.startswith('data: '):
+                                    try:
+                                        data = json.loads(line[6:])
+                                        if 'token' in data:
+                                            yield {"type": "token", "content": data['token']}
+                                        elif 'done' in data:
+                                            break
+                                        elif 'error' in data:
+                                            yield {"type": "error", "content": data['error']}
+                                    except json.JSONDecodeError:
+                                        continue
                         else:
                             yield {"type": "error", "content": f"Remote Error: {resp.status}"}
+                except aiohttp.ClientError as e:
+                    logger.error(f"Remote Brain Connection Error: {e}")
+                    yield {"type": "error", "content": str(e)}
                 except Exception as e:
                     logger.error(f"Remote Brain Error: {e}")
                     yield {"type": "error", "content": str(e)}
