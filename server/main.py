@@ -588,7 +588,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         return {
             "text": result.text,
             "emotion": result.emotion,
-            "confidence": result.confidence,
+            "confidence": result.emotion_confidence,
             "language": result.language
         }
         
