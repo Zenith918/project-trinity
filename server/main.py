@@ -58,9 +58,12 @@ from mind_engine import BioState, NarrativeManager, EgoDirector
 from monitor import SystemMonitor
 
 def write_chat_log(log_data: dict):
+    """
+    对话日志 - 按天归档到 logs/conversations/YYYY-MM-DD.jsonl
+    """
     try:
         import json
-        import os
+        from pathlib import Path
         
         # 计算统计数据
         total_time_s = time.time() - log_data["start"]
@@ -68,8 +71,8 @@ def write_chat_log(log_data: dict):
         
         entry = {
             "timestamp": datetime.now().isoformat(),
-            "input": log_data["input"],
-            "output": log_data["output"],
+            "user": log_data["input"],
+            "assistant": log_data["output"],
             "metrics": {
                 "ttft_ms": round(log_data.get("ttft", 0), 2),
                 "total_time_s": round(total_time_s, 2),
@@ -77,13 +80,19 @@ def write_chat_log(log_data: dict):
             }
         }
         
-        log_path = "/root/.cursor/worktrees/project-trinity__SSH__runpod-trinity-new_/klm/logs/chat_history.jsonl"
+        # 按天归档
+        log_dir = Path("/workspace/project-trinity/project-trinity/logs/conversations")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        log_path = log_dir / f"{today}.jsonl"
+        
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        logger.info(f"📝 Log saved via BackgroundTasks: {len(entry['output'])} chars")
+        logger.info(f"📝 对话已记录: {today}.jsonl ({len(entry['assistant'])} chars)")
             
     except Exception as e:
-        logger.error(f"Failed to save log via BackgroundTasks: {e}")
+        logger.error(f"对话日志写入失败: {e}")
 
 # ============== 全局组件 ==============
 monitor: Optional[SystemMonitor] = None
@@ -653,6 +662,57 @@ async def synthesize_speech(request: dict):
     except Exception as e:
         logger.error(f"语音合成失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== 对话日志 API ==============
+
+@app.get("/logs/dates")
+async def list_log_dates():
+    """列出所有有日志的日期"""
+    from pathlib import Path
+    log_dir = Path("/workspace/project-trinity/project-trinity/logs/conversations")
+    
+    if not log_dir.exists():
+        return {"dates": []}
+    
+    dates = [f.stem for f in log_dir.glob("*.jsonl")]
+    return {"dates": sorted(dates, reverse=True)}
+
+
+@app.get("/logs/{date}")
+async def get_logs_by_date(date: str):
+    """
+    获取指定日期的对话记录
+    
+    Args:
+        date: 日期 YYYY-MM-DD
+    """
+    import json
+    from pathlib import Path
+    
+    log_file = Path(f"/workspace/project-trinity/project-trinity/logs/conversations/{date}.jsonl")
+    
+    if not log_file.exists():
+        return {"date": date, "conversations": [], "count": 0}
+    
+    conversations = []
+    with open(log_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                conversations.append(json.loads(line))
+    
+    return {
+        "date": date,
+        "conversations": conversations,
+        "count": len(conversations)
+    }
+
+
+@app.get("/logs/today")
+async def get_today_logs():
+    """获取今天的对话记录"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return await get_logs_by_date(today)
 
 
 # ============== 主入口 ==============
