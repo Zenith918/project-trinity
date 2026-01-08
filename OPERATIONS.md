@@ -118,7 +118,7 @@
 
 ```bash
 cd /workspace/project-trinity/project-trinity
-./run_microservices.sh
+./scripts/run_microservices.sh
 ```
 
 ### 方式二：手动启动
@@ -332,7 +332,7 @@ netstat -tlnp | grep -E "8000|8001|9000"
 
 ### 6. 启动服务
 ```bash
-./run_microservices.sh
+./scripts/run_microservices.sh
 ```
 
 ### 7. 验证
@@ -384,7 +384,7 @@ cd /workspace/project-trinity/project-trinity
 ### 完全重启 (包括模型)
 ```bash
 pkill -9 -f uvicorn
-./run_microservices.sh
+./scripts/run_microservices.sh
 ```
 
 ### 检查 GPU 状态
@@ -421,11 +421,13 @@ cd /workspace/project-trinity/project-trinity
 git checkout .
 
 # 4. 重新启动
-./run_microservices.sh
+./scripts/run_microservices.sh
 ```
 
 ---
 
 **最后更新**: 2026-01-08
 **维护者**: Project Trinity Team
+
+
 
