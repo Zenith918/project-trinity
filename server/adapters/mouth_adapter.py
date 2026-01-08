@@ -35,14 +35,8 @@ class SpeechResult:
 class MouthAdapter(BaseAdapter):
     """
     CosyVoice 3.0 适配器
-    
-    特性:
-    - Instruct Mode 支持情感指令
-    - 零样本语音克隆
-    - 流式输出
     """
     
-    # 情感映射到 CosyVoice 指令
     EMOTION_INSTRUCTIONS = {
         "Soft": "用温柔轻柔的声音说",
         "Concerned": "用关切担忧的语气说",
@@ -53,53 +47,37 @@ class MouthAdapter(BaseAdapter):
         "Neutral": "用自然的声音说"
     }
     
-    def __init__(self, model_path: str = "FunAudioLLM/CosyVoice2-0.5B"):
+    def __init__(
+        self, 
+        model_path: str = "FunAudioLLM/CosyVoice2-0.5B",
+        remote_url: Optional[str] = None
+    ):
         super().__init__("MouthAdapter")
         self.model_path = model_path
+        self.remote_url = remote_url
+        self.remote_mode = False
         self.model = None
         self.default_speaker = None
+        self._lock = asyncio.Lock()
         
     async def initialize(self) -> bool:
         """初始化 CosyVoice 模型"""
+        if self.model_path == "REMOTE":
+            self.remote_mode = True
+            logger.info(f"MouthAdapter 运行在远程模式: {self.remote_url}")
+            self.is_initialized = True
+            return True
+
         try:
             logger.info(f"正在初始化 CosyVoice 模型: {self.model_path}")
             
-            # 检查本地模型路径
-            if os.path.exists(self.model_path):
-                logger.info(f"使用本地模型: {self.model_path}")
+            # 使用 CosyVoice3
+            from cosyvoice.cli.cosyvoice import CosyVoice3
+            self.model = CosyVoice3(self.model_path, load_trt=False)
             
-            # CosyVoice 初始化 - 尝试多种导入方式
-            cosyvoice_loaded = False
-            
-            # 方式1: CosyVoice CLI (推荐)
-            try:
-                from cosyvoice.cli.cosyvoice import CosyVoice
-                self.model = CosyVoice(self.model_path)
-                cosyvoice_loaded = True
-                logger.info("使用 CosyVoice CLI 模式")
-            except ImportError as e:
-                logger.debug(f"CosyVoice CLI 导入失败: {e}")
-            except Exception as e:
-                logger.debug(f"CosyVoice CLI 初始化失败: {e}")
-            
-            # 方式2: CosyVoice2
-            if not cosyvoice_loaded:
-                try:
-                    from cosyvoice.cli.cosyvoice import CosyVoice2
-                    self.model = CosyVoice2(self.model_path, load_jit=False, load_trt=False)
-                    cosyvoice_loaded = True
-                    logger.info("使用 CosyVoice2 模式")
-                except ImportError as e:
-                    logger.debug(f"CosyVoice2 导入失败: {e}")
-                except Exception as e:
-                    logger.debug(f"CosyVoice2 初始化失败: {e}")
-            
-            if cosyvoice_loaded:
-                self.is_initialized = True
-                logger.success("CosyVoice 模型初始化成功")
-                return True
-            else:
-                raise ImportError("无法导入 CosyVoice 模块")
+            self.is_initialized = True
+            logger.success("CosyVoice 模型初始化成功")
+            return True
             
         except Exception as e:
             logger.error(f"CosyVoice 初始化失败: {e}")
@@ -115,24 +93,44 @@ class MouthAdapter(BaseAdapter):
         emotion_tag: str = "Neutral",
         speaker_embedding: Optional[np.ndarray] = None
     ) -> SpeechResult:
-        """
-        合成语音
-        
-        Args:
-            text: 要合成的文本
-            emotion_tag: 情感标签
-            speaker_embedding: 说话人嵌入（用于声音克隆）
-            
-        Returns:
-            SpeechResult: 音频数据
-        """
+        """合成语音"""
         if not self.is_initialized:
             raise RuntimeError("MouthAdapter 未初始化")
         
-        # 获取情感指令
         emotion_key = emotion_tag.strip("[]")
         instruction = self.EMOTION_INSTRUCTIONS.get(emotion_key, self.EMOTION_INSTRUCTIONS["Neutral"])
         
+        # 远程模式
+        if self.remote_mode:
+            import aiohttp
+            try:
+                async with aiohttp.ClientSession() as session:
+                    payload = {
+                        "text": text,
+                        "prompt_text": instruction
+                    }
+                    async with session.post(f"{self.remote_url}/tts", json=payload) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            audio_list = data.get("audio", [])
+                            sr = data.get("sample_rate", 24000)
+                            
+                            audio_data = np.array(audio_list, dtype=np.float32)
+                            duration = len(audio_data) / sr
+                            
+                            return SpeechResult(
+                                audio_data=audio_data,
+                                sample_rate=sr,
+                                duration=duration
+                            )
+                        else:
+                            logger.error(f"Remote TTS Error: {resp.status}")
+                            return self._mock_result()
+            except Exception as e:
+                logger.error(f"Remote TTS Exception: {e}")
+                return self._mock_result()
+
+        # 本地模式
         # 处理内嵌动作标签
         text = self._process_action_tags(text)
         
@@ -149,42 +147,47 @@ class MouthAdapter(BaseAdapter):
                 
             except Exception as e:
                 logger.error(f"语音合成失败: {e}")
-                # 返回静音
-                return SpeechResult(
-                    audio_data=np.zeros(16000, dtype=np.float32),
-                    sample_rate=16000,
-                    duration=1.0
-                )
+                return self._mock_result()
     
+    def _mock_result(self):
+        return SpeechResult(
+            audio_data=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            duration=1.0
+        )
+
     def _process_action_tags(self, text: str) -> str:
-        """
-        处理动作标签，转换为 CosyVoice 支持的格式
-        
-        例如: [laugh] -> <laugh>
-        """
         action_mapping = {
             "[laugh]": "<laughter>",
             "[sigh]": "<sigh>",
-            "[smile]": "",  # 微笑不影响语音
+            "[smile]": "",
             "[pause]": "...",
         }
-        
         for tag, replacement in action_mapping.items():
             text = text.replace(tag, replacement)
-            
         return text
     
     def _inference(self, text: str, instruction: str) -> SpeechResult:
         """同步推理"""
-        # CosyVoice Instruct Mode
-        result = self.model.inference_instruct(
-            text,
-            instruction,
-            self.default_speaker
-        )
+        # CosyVoice3 Inference
+        prompt_wav = np.zeros(16000, dtype=np.float32)
         
-        audio_data = result["audio"]
-        sample_rate = result.get("sample_rate", 22050)
+        full_audio = []
+        sample_rate = 24000
+        
+        for output in self.model.inference_instruct2(
+            tts_text=text,
+            instruct_text=instruction,
+            prompt_wav=prompt_wav,
+            stream=False
+        ):
+            if 'tts_speech' in output:
+                full_audio.append(output['tts_speech'].cpu().numpy())
+        
+        if not full_audio:
+            raise RuntimeError("No audio generated")
+            
+        audio_data = np.concatenate(full_audio, axis=1).flatten()
         duration = len(audio_data) / sample_rate
         
         return SpeechResult(
@@ -193,34 +196,8 @@ class MouthAdapter(BaseAdapter):
             duration=duration
         )
     
-    async def process_stream(
-        self,
-        text: str,
-        emotion_tag: str = "Neutral"
-    ) -> AsyncGenerator[bytes, None]:
-        """
-        流式语音合成
-        
-        用于实时对话场景，边合成边播放
-        
-        TODO: Phase 2 实现流式 TTS
-        """
-        pass
-    
-    def set_speaker(self, speaker_audio: np.ndarray, sample_rate: int) -> None:
-        """
-        设置说话人（用于声音克隆）
-        
-        Args:
-            speaker_audio: 参考音频
-            sample_rate: 采样率
-        """
-        # TODO: 实现声音克隆
-        pass
-    
     async def shutdown(self) -> None:
-        """关闭模型"""
-        if self.model is not None:
+        if self.model is not None and not isinstance(self.model, MockTTS):
             del self.model
             self.model = None
         self.is_initialized = False
@@ -228,18 +205,5 @@ class MouthAdapter(BaseAdapter):
 
 
 class MockTTS:
-    """Mock TTS 实现（当 CosyVoice 不可用时）"""
-    
-    def inference_instruct(self, text: str, instruction: str, speaker) -> dict:
-        """生成静音音频作为占位"""
-        import numpy as np
-        # 生成 1 秒静音
-        sample_rate = 22050
-        duration = max(1.0, len(text) * 0.1)  # 根据文本长度估算时长
-        audio = np.zeros(int(sample_rate * duration), dtype=np.float32)
-        
-        return {
-            "audio": audio,
-            "sample_rate": sample_rate
-        }
-
+    def inference_instruct2(self, *args, **kwargs):
+        pass

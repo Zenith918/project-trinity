@@ -124,60 +124,115 @@ async def lifespan(app: FastAPI):
     
     # 初始化适配器 (可选，根据环境决定是否加载模型)
     if not settings.server.debug:
-        # 生产环境: 加载所有模型
-        # 改为串行初始化，确保 Qwen (Brain) 优先加载，抢占大块显存
-        logger.info("--- 开始串行初始化组件 ---")
-        
-        # 1. 大脑 (Qwen) - 最吃显存，必须第一个加载
-        try:
-            logger.info("正在初始化 BrainAdapter (Priority 1)...")
-            brain_adapter = BrainAdapter(
-                model_path=settings.model.qwen_model_path,
-                tensor_parallel_size=settings.model.qwen_tensor_parallel_size,
-                max_model_len=settings.model.qwen_max_model_len,
-                quantization=settings.model.qwen_quantization,
-                gpu_memory_utilization=settings.model.qwen_gpu_memory_utilization
-            )
-            await brain_adapter.initialize()
-            if not brain_adapter.is_initialized:
-                raise RuntimeError("BrainAdapter 初始化失败")
-            logger.success("✓ Brain Adapter 初始化完成")
-        except Exception as e:
-            logger.error(f"✗ Brain Adapter 失败: {e}")
-
-        # 2. 嘴巴 (CosyVoice) - 显存占用第二
-        try:
-            logger.info("正在初始化 MouthAdapter (Priority 2)...")
-            mouth_adapter = MouthAdapter(
-                model_path=settings.model.cosyvoice_model_path
-            )
-            await mouth_adapter.initialize()
-            logger.success("✓ Mouth Adapter 初始化完成")
-        except Exception as e:
-            logger.error(f"✗ Mouth Adapter 失败: {e}")
-
-        # 3. 听觉 (SenseVoice)
-        try:
-            logger.info("正在初始化 VoiceAdapter...")
-            voice_adapter = VoiceAdapter(
-                model_name=settings.model.funasr_model,
-                device=settings.model.funasr_device
-            )
-            await voice_adapter.initialize()
-            logger.success("✓ Voice Adapter 初始化完成")
-        except Exception as e:
-            logger.error(f"✗ Voice Adapter 失败: {e}")
+        # 检查是否为微服务模式
+        if os.getenv("TRINITY_MODE") == "microservice":
+            # ============== 微服务模式 ==============
+            # Brain 和 Mouth 通过远程 Cortex 服务器访问
+            logger.info("🚀 微服务模式: 连接到 Cortex Model Server...")
+            cortex_url = os.getenv("CORTEX_URL", "http://localhost:9000")
             
-        # 4. 表情 (GeneFace)
-        try:
-            logger.info("正在初始化 DriverAdapter...")
-            driver_adapter = DriverAdapter(
-                geneface_path=settings.model.geneface_model_path
-            )
-            await driver_adapter.initialize()
-            logger.success("✓ Driver Adapter 初始化完成")
-        except Exception as e:
-            logger.error(f"✗ Driver Adapter 失败: {e}")
+            # 1. Remote Brain
+            try:
+                logger.info(f"正在初始化 Remote BrainAdapter -> {cortex_url}/brain...")
+                brain_adapter = BrainAdapter(
+                    model_path="REMOTE",
+                    remote_url=f"{cortex_url}/brain"
+                )
+                await brain_adapter.initialize()
+                logger.success("✓ Remote BrainAdapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Remote BrainAdapter 失败: {e}")
+
+            # 2. Remote Mouth
+            try:
+                logger.info(f"正在初始化 Remote MouthAdapter -> {cortex_url}/mouth...")
+                mouth_adapter = MouthAdapter(
+                    model_path="REMOTE",
+                    remote_url=f"{cortex_url}/mouth"
+                )
+                await mouth_adapter.initialize()
+                logger.success("✓ Remote MouthAdapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Remote MouthAdapter 失败: {e}")
+                
+            # 3. Voice (本地，FunASR 较轻)
+            try:
+                logger.info("正在初始化 VoiceAdapter (Local)...")
+                voice_adapter = VoiceAdapter(
+                    model_name=settings.model.funasr_model,
+                    device=settings.model.funasr_device
+                )
+                await voice_adapter.initialize()
+                logger.success("✓ Voice Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Voice Adapter 失败: {e}")
+    
+            # 4. Driver (本地)
+            try:
+                logger.info("正在初始化 DriverAdapter (Local)...")
+                driver_adapter = DriverAdapter(
+                    geneface_path=settings.model.geneface_model_path
+                )
+                await driver_adapter.initialize()
+                logger.success("✓ Driver Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Driver Adapter 失败: {e}")
+                
+        else:
+            # ============== 单体模式 ==============
+            # 所有模型在本地加载
+            logger.info("--- 开始串行初始化组件 (单体模式) ---")
+            
+            # 1. 大脑 (Qwen) - 最吃显存，必须第一个加载
+            try:
+                logger.info("正在初始化 BrainAdapter (Priority 1)...")
+                brain_adapter = BrainAdapter(
+                    model_path=settings.model.qwen_model_path,
+                    tensor_parallel_size=settings.model.qwen_tensor_parallel_size,
+                    max_model_len=settings.model.qwen_max_model_len,
+                    quantization=settings.model.qwen_quantization,
+                    gpu_memory_utilization=settings.model.qwen_gpu_memory_utilization
+                )
+                await brain_adapter.initialize()
+                if not brain_adapter.is_initialized:
+                    raise RuntimeError("BrainAdapter 初始化失败")
+                logger.success("✓ Brain Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Brain Adapter 失败: {e}")
+
+            # 2. 嘴巴 (CosyVoice) - 显存占用第二
+            try:
+                logger.info("正在初始化 MouthAdapter (Priority 2)...")
+                mouth_adapter = MouthAdapter(
+                    model_path=settings.model.cosyvoice_model_path
+                )
+                await mouth_adapter.initialize()
+                logger.success("✓ Mouth Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Mouth Adapter 失败: {e}")
+
+            # 3. 听觉 (SenseVoice)
+            try:
+                logger.info("正在初始化 VoiceAdapter...")
+                voice_adapter = VoiceAdapter(
+                    model_name=settings.model.funasr_model,
+                    device=settings.model.funasr_device
+                )
+                await voice_adapter.initialize()
+                logger.success("✓ Voice Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Voice Adapter 失败: {e}")
+                
+            # 4. 表情 (GeneFace)
+            try:
+                logger.info("正在初始化 DriverAdapter...")
+                driver_adapter = DriverAdapter(
+                    geneface_path=settings.model.geneface_model_path
+                )
+                await driver_adapter.initialize()
+                logger.success("✓ Driver Adapter 初始化完成")
+            except Exception as e:
+                logger.error(f"✗ Driver Adapter 失败: {e}")
         
     else:
         logger.warning("⚠ Debug 模式: 跳过模型加载")
