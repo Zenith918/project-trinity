@@ -37,7 +37,21 @@ warn() { echo -e "${YELLOW}[Trinity]${NC} $1"; }
 error() { echo -e "${RED}[Trinity]${NC} $1"; }
 
 # ==========================================
-# 0. 前置检查 (Pre-flight Checks)
+# 0. 系统依赖检查
+# ==========================================
+log "检查系统依赖..."
+
+# FFmpeg (torchaudio 需要)
+if ! which ffmpeg > /dev/null 2>&1; then
+    warn "FFmpeg 未安装，正在安装..."
+    apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1
+    log "✅ FFmpeg 安装完成"
+else
+    log "✅ FFmpeg 已安装"
+fi
+
+# ==========================================
+# 1. 前置检查 (Pre-flight Checks)
 # ==========================================
 log "🔍 执行前置检查..."
 
