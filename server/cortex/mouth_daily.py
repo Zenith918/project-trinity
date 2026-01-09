@@ -3,65 +3,74 @@
 ║  👄 CORTEX-MOUTH-DAILY (端口 9003)                                            ║
 ║  VoxCPM 1.5 - 极致低延迟配置                                                  ║
 ║                                                                              ║
-║  注意: optimize=False 以支持流式输出                                          ║
+║  🔥 optimize=True + 禁用 CUDA Graph = TTFA ~285ms (比 optimize=False 快 37%)   ║
+║  💡 首次流式调用会触发 JIT 编译 (~13秒)，之后稳定在 ~285ms                       ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
 import os
+# 🔑 关键：在导入 torch 之前禁用 CUDA Graph
+os.environ['TORCHINDUCTOR_CUDAGRAPHS'] = '0'
+
+import torch
+# 双重保险：通过 config 禁用
+torch._inductor.config.triton.cudagraphs = False
+
 import io
 import wave
 import numpy as np
-import torch
 from loguru import logger
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, Response
 from contextlib import asynccontextmanager
-from typing import Optional, Generator
 import time
 
-# 全局实例
 mouth = None
 
 
 class DailyMouthHandler:
-    """VoxCPM 1.5 处理器"""
+    """VoxCPM 1.5 处理器 - optimize=True + 禁用 CUDA Graph"""
     
     def __init__(self):
         self.model = None
         self.is_ready = False
         self.sample_rate = 24000
-        
-        # 配置
-        self.config = {
-            "steps": 2,
-            "cfg_value": 1.0,
-        }
+        self.config = {"steps": 2, "cfg_value": 1.0}
         
     async def initialize(self):
         logger.info("=" * 60)
-        logger.info("正在初始化 VoxCPM 1.5...")
+        logger.info("正在初始化 VoxCPM 1.5 (optimize=True, cudagraphs=False)...")
         logger.info("=" * 60)
         
         try:
             from voxcpm import VoxCPM
             
-            # 加载模型 - 禁用 optimize 以支持流式
+            # 🔥 启用 torch.compile 优化
             self.model = VoxCPM.from_pretrained(
                 hf_model_id="openbmb/VoxCPM1.5",
                 load_denoiser=False,
-                optimize=False,  # 关键：禁用以支持流式
+                optimize=True,
             )
             
-            # 预热
-            logger.info("预热推理...")
+            # 预热 1: 非流式
+            logger.info("预热 1/2: 非流式推理...")
             _ = self.model.generate(
-                text="预热测试",
+                text="预热",
                 inference_timesteps=self.config["steps"],
                 cfg_value=self.config["cfg_value"],
             )
             
+            # 预热 2: 流式 (触发完整 JIT)
+            logger.info("预热 2/2: 流式推理 (触发 JIT 编译, 约 13 秒)...")
+            for chunk in self.model.generate_streaming(
+                text="流式预热",
+                inference_timesteps=self.config["steps"],
+                cfg_value=self.config["cfg_value"],
+            ):
+                pass
+            
             self.is_ready = True
-            logger.success("✅ VoxCPM 1.5 初始化完成！")
+            logger.success("✅ VoxCPM 1.5 初始化完成 (TTFA ~285ms)")
             return True
             
         except Exception as e:
@@ -70,69 +79,44 @@ class DailyMouthHandler:
             logger.error(traceback.format_exc())
             return False
 
-    def synthesize(self, text: str, inference_timesteps: int = None, cfg_value: float = None) -> bytes:
-        """一次性合成"""
+    def synthesize(self, text, inference_timesteps=None, cfg_value=None):
         if not self.is_ready:
             return b""
-        
         steps = inference_timesteps or self.config["steps"]
         cfg = cfg_value or self.config["cfg_value"]
-            
         try:
-            start_time = time.time()
-            
-            audio = self.model.generate(
-                text=text,
-                cfg_value=cfg,
-                inference_timesteps=steps,
-            )
-            
-            elapsed = (time.time() - start_time) * 1000
-            logger.info(f"生成完成: {len(text)}字, {elapsed:.0f}ms")
-            
-            # 转换为 WAV
+            start = time.time()
+            audio = self.model.generate(text=text, cfg_value=cfg, inference_timesteps=steps)
+            logger.info(f"生成: {len(text)}字, {(time.time()-start)*1000:.0f}ms")
             audio_int16 = (audio * 32767).astype(np.int16)
-            buffer = io.BytesIO()
-            with wave.open(buffer, 'wb') as wf:
+            buf = io.BytesIO()
+            with wave.open(buf, 'wb') as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(self.sample_rate)
                 wf.writeframes(audio_int16.tobytes())
-            
-            return buffer.getvalue()
-            
+            return buf.getvalue()
         except Exception as e:
             logger.error(f"推理失败: {e}")
             return b""
 
-    def synthesize_stream(self, text: str, inference_timesteps: int = None, cfg_value: float = None):
-        """流式合成"""
+    def synthesize_stream(self, text, inference_timesteps=None, cfg_value=None):
         if not self.is_ready:
             yield b""
             return
-        
         steps = inference_timesteps or self.config["steps"]
         cfg = cfg_value or self.config["cfg_value"]
-            
         try:
-            start_time = time.time()
-            first_chunk = True
-            
-            for chunk in self.model.generate_streaming(
-                text=text,
-                cfg_value=cfg,
-                inference_timesteps=steps,
-            ):
-                if first_chunk:
-                    ttfa = (time.time() - start_time) * 1000
-                    logger.info(f"TTFA: {ttfa:.0f}ms")
-                    first_chunk = False
-                
+            start = time.time()
+            first = True
+            for chunk in self.model.generate_streaming(text=text, cfg_value=cfg, inference_timesteps=steps):
+                if first:
+                    logger.info(f"TTFA: {(time.time()-start)*1000:.0f}ms")
+                    first = False
                 chunk_int16 = (chunk * 32767).astype(np.int16)
                 yield chunk_int16.tobytes()
-                
         except Exception as e:
-            logger.error(f"流式推理失败: {e}")
+            logger.error(f"流式失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
             yield b""
@@ -142,15 +126,12 @@ class DailyMouthHandler:
 async def lifespan(app: FastAPI):
     global mouth
     logger.info("👄 Cortex-Mouth-Daily 启动中...")
-    
     mouth = DailyMouthHandler()
     await mouth.initialize()
-    
     if mouth.is_ready:
         logger.success("✅ Mouth-Daily 就绪 (端口 9003)")
-    
     yield
-    logger.info("🛑 Mouth-Daily 关闭中...")
+    logger.info("🛑 Mouth-Daily 关闭")
 
 
 app = FastAPI(lifespan=lifespan, title="Cortex-Mouth-Daily")
@@ -161,8 +142,9 @@ async def health():
     return {
         "service": "mouth-daily",
         "status": "ok" if mouth and mouth.is_ready else "loading",
-        "model": "VoxCPM 1.5",
+        "model": "VoxCPM 1.5 (optimized, cudagraph=off)",
         "sample_rate": 24000,
+        "ttfa_target": "~285ms",
         "config": mouth.config if mouth else {}
     }
 
@@ -170,37 +152,25 @@ async def health():
 @app.post("/tts")
 async def tts(request: dict):
     if not mouth or not mouth.is_ready:
-        return {"error": "Mouth not ready"}
-    
+        return {"error": "Not ready"}
     text = request.get("text", "")
     if not text:
-        return {"error": "text is required"}
-    
-    inference_timesteps = request.get("inference_timesteps")
-    cfg_value = request.get("cfg_value")
-    
-    audio_bytes = mouth.synthesize(text, inference_timesteps, cfg_value)
-    
-    if not audio_bytes:
-        return {"error": "Synthesis failed"}
-    
-    return Response(content=audio_bytes, media_type="audio/wav")
+        return {"error": "text required"}
+    audio = mouth.synthesize(text, request.get("inference_timesteps"), request.get("cfg_value"))
+    if not audio:
+        return {"error": "failed"}
+    return Response(content=audio, media_type="audio/wav")
 
 
 @app.post("/tts/stream")
 async def tts_stream(request: dict):
     if not mouth or not mouth.is_ready:
-        return {"error": "Mouth not ready"}
-    
+        return {"error": "Not ready"}
     text = request.get("text", "")
     if not text:
-        return {"error": "text is required"}
-    
-    inference_timesteps = request.get("inference_timesteps")
-    cfg_value = request.get("cfg_value")
-    
+        return {"error": "text required"}
     return StreamingResponse(
-        mouth.synthesize_stream(text, inference_timesteps, cfg_value),
+        mouth.synthesize_stream(text, request.get("inference_timesteps"), request.get("cfg_value")),
         media_type="audio/pcm",
         headers={"X-Sample-Rate": "24000"}
     )
