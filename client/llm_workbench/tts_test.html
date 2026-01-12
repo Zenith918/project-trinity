@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxCPM 1.5 语音测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); min-height: 100vh; }
+        .glass { background: rgba(30, 30, 50, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+        .speaking .pulse-ring { animation: pulse-ring 1s ease-out infinite; }
+    </style>
+</head>
+<body class="text-white font-sans">
+    <div class="container mx-auto px-4 py-12 max-w-2xl">
+        <!-- Header -->
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-green-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent mb-2">
+                VoxCPM 1.5 语音测试
+            </h1>
+            <p class="text-slate-400">直接测试 TTS 延迟，不经过 LLM</p>
+        </div>
+
+        <!-- Status Card -->
+        <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div id="status-dot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                    <span id="status-text" class="text-slate-300">检查服务状态...</span>
+                </div>
+                <button id="refresh-btn" onclick="checkHealth()" class="text-slate-400 hover:text-white transition">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Card -->
+        <div class="glass rounded-2xl p-8">
+            <!-- Avatar -->
+            <div id="avatar" class="relative w-24 h-24 mx-auto mb-6">
+                <div class="absolute inset-0 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center">
+                    <i class="fas fa-microphone-alt text-3xl text-white"></i>
+                </div>
+                <div class="pulse-ring absolute inset-0 rounded-full border-2 border-green-400 opacity-0"></div>
+            </div>
+
+            <!-- Input -->
+            <textarea id="text-input" rows="3" 
+                class="w-full bg-slate-800/50 rounded-xl p-4 text-white placeholder-slate-500 border border-slate-700 focus:border-green-500 focus:outline-none resize-none mb-4"
+                placeholder="输入要合成的文字...">你好，我是你的AI女友。今天过得怎么样？</textarea>
+
+            <!-- Controls -->
+            <div class="flex gap-3 mb-6">
+                <button id="play-btn" onclick="synthesize()" 
+                    class="flex-1 bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    <i class="fas fa-play"></i>
+                    <span>播放</span>
+                </button>
+                <button id="stream-btn" onclick="synthesizeStream()" 
+                    class="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    <i class="fas fa-stream"></i>
+                    <span>流式播放</span>
+                </button>
+            </div>
+
+            <!-- Metrics -->
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">TTFA</div>
+                    <div id="ttfa" class="text-2xl font-bold text-green-400">--</div>
+                    <div class="text-xs text-slate-600">ms</div>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">总时长</div>
+                    <div id="total-time" class="text-2xl font-bold text-cyan-400">--</div>
+                    <div class="text-xs text-slate-600">ms</div>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">RTF</div>
+                    <div id="rtf" class="text-2xl font-bold text-purple-400">--</div>
+                    <div class="text-xs text-slate-600">x</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Presets -->
+        <div class="mt-6 flex flex-wrap gap-2 justify-center">
+            <button onclick="setPreset('你好')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">你好</button>
+            <button onclick="setPreset('今天天气真好，我们出去走走吧！')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">日常</button>
+            <button onclick="setPreset('我好想你啊，你什么时候回来？')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">思念</button>
+            <button onclick="setPreset('哼！你又在骗我，讨厌死了！')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">撒娇</button>
+        </div>
+    </div>
+
+    <script>
+        const TTS_URL = 'http://localhost:9003';
+        let audioContext = null;
+
+        function setPreset(text) {
+            document.getElementById('text-input').value = text;
+        }
+
+        async function checkHealth() {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            try {
+                const res = await fetch(`${TTS_URL}/health`);
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    dot.className = 'w-3 h-3 rounded-full bg-green-500 animate-pulse';
+                    text.textContent = '✅ VoxCPM 1.5 就绪 (TTFA ~285ms)';
+                    document.getElementById('play-btn').disabled = false;
+                    document.getElementById('stream-btn').disabled = false;
+                } else {
+                    dot.className = 'w-3 h-3 rounded-full bg-yellow-500 animate-pulse';
+                    text.textContent = '⏳ ' + (data.status || '加载中...');
+                }
+            } catch (e) {
+                dot.className = 'w-3 h-3 rounded-full bg-red-500';
+                text.textContent = '❌ 服务未运行 (端口 9003)';
+            }
+        }
+
+        async function synthesize() {
+            const input = document.getElementById('text-input').value;
+            if (!input) return;
+
+            const avatar = document.getElementById('avatar');
+            avatar.classList.add('speaking');
+            
+            const startTime = performance.now();
+            
+            try {
+                const res = await fetch(`${TTS_URL}/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: input })
+                });
+                
+                const ttfa = performance.now() - startTime;
+                document.getElementById('ttfa').textContent = Math.round(ttfa);
+                
+                const audioBlob = await res.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                
+                audio.onended = () => {
+                    avatar.classList.remove('speaking');
+                    const totalTime = performance.now() - startTime;
+                    document.getElementById('total-time').textContent = Math.round(totalTime);
+                    // RTF = 合成时间 / 音频时长
+                    document.getElementById('rtf').textContent = (ttfa / 1000 / audio.duration).toFixed(2);
+                };
+                
+                audio.play();
+            } catch (e) {
+                avatar.classList.remove('speaking');
+                alert('错误: ' + e.message);
+            }
+        }
+
+        async function synthesizeStream() {
+            const input = document.getElementById('text-input').value;
+            if (!input) return;
+
+            const avatar = document.getElementById('avatar');
+            avatar.classList.add('speaking');
+            
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            }
+            
+            const startTime = performance.now();
+            let firstChunkTime = null;
+            let nextStartTime = 0;
+            let totalSamples = 0;
+            
+            try {
+                const res = await fetch(`${TTS_URL}/tts/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: input })
+                });
+                
+                const reader = res.body.getReader();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    if (value.length > 0) {
+                        if (firstChunkTime === null) {
+                            firstChunkTime = performance.now();
+                            const ttfa = firstChunkTime - startTime;
+                            document.getElementById('ttfa').textContent = Math.round(ttfa);
+                            document.getElementById('ttfa').className = ttfa < 350 ? 'text-2xl font-bold text-green-400' : 'text-2xl font-bold text-yellow-400';
+                        }
+                        
+                        // 播放音频块
+                        const int16 = new Int16Array(value.buffer);
+                        const float32 = new Float32Array(int16.length);
+                        for (let i = 0; i < int16.length; i++) {
+                            float32[i] = int16[i] / 32768.0;
+                        }
+                        totalSamples += float32.length;
+                        
+                        const audioBuffer = audioContext.createBuffer(1, float32.length, 24000);
+                        audioBuffer.getChannelData(0).set(float32);
+                        
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+                        
+                        const currentTime = audioContext.currentTime;
+                        const playTime = Math.max(currentTime, nextStartTime);
+                        source.start(playTime);
+                        nextStartTime = playTime + audioBuffer.duration;
+                    }
+                }
+                
+                const totalTime = performance.now() - startTime;
+                document.getElementById('total-time').textContent = Math.round(totalTime);
+                
+                // 音频时长 = 总样本数 / 采样率
+                const audioDuration = totalSamples / 24000;
+                document.getElementById('rtf').textContent = ((firstChunkTime - startTime) / 1000 / audioDuration).toFixed(2);
+                
+                // 等待播放完成
+                setTimeout(() => avatar.classList.remove('speaking'), audioDuration * 1000);
+                
+            } catch (e) {
+                avatar.classList.remove('speaking');
+                alert('错误: ' + e.message);
+            }
+        }
+
+        // 初始化
+        checkHealth();
+        setInterval(checkHealth, 5000);
+    </script>
+</body>
+</html>

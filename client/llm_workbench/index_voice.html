@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trinity Voice Workbench</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #0a0a0f; color: #e2e8f0; font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .chat-bubble { max-width: 85%; animation: fadeIn 0.3s ease-out; }
+        .user-bubble { background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); border-radius: 20px 20px 4px 20px; }
+        .ai-bubble { background: linear-gradient(135deg, #1e1e2e 0%, #1a1a2e 100%); border-radius: 20px 20px 20px 4px; border: 1px solid #333355; }
+        .typing-cursor::after { content: '▋'; animation: blink 1s step-start infinite; color: #60a5fa; }
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 5px #22c55e; } 50% { box-shadow: 0 0 20px #22c55e, 0 0 30px #22c55e; } }
+        .voice-active { animation: pulse-glow 1s ease-in-out infinite; }
+        .metric-card { background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0f; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700/50 p-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+            <h1 class="font-bold text-xl bg-gradient-to-r from-green-400 to-cyan-400 bg-clip-text text-transparent">
+                Trinity Voice Lab
+            </h1>
+            <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">VoxCPM 1.5</span>
+        </div>
+        <div class="flex gap-6 text-xs font-mono">
+            <div class="metric-card px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <span class="text-slate-500">LLM TTFT</span>
+                <span id="llm-ttft" class="ml-2 text-yellow-400 font-bold">--</span><span class="text-slate-600">ms</span>
+            </div>
+            <div class="metric-card px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <span class="text-slate-500">TTS TTFA</span>
+                <span id="tts-ttfa" class="ml-2 text-green-400 font-bold">--</span><span class="text-slate-600">ms</span>
+            </div>
+            <div class="metric-card px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <span class="text-slate-500">总延迟</span>
+                <span id="total-latency" class="ml-2 text-cyan-400 font-bold">--</span><span class="text-slate-600">ms</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Chat Area -->
+    <main id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
+        <div class="flex flex-col items-start chat-bubble ai-bubble p-5">
+            <div class="flex items-center gap-2 mb-2 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                <i class="fas fa-microphone-alt text-green-400"></i> Trinity Voice
+            </div>
+            <div class="prose text-sm leading-relaxed text-slate-200">
+                <p>你好！我是 Trinity 的<span class="text-green-400 font-bold">语音版本</span>。</p>
+                <p>输入任何文字，我会用<span class="text-cyan-400">VoxCPM 1.5</span>说出来。</p>
+                <p>你可以体验：<span class="text-yellow-300">LLM 生成 + TTS 合成</span>的完整延迟。</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Input Area -->
+    <footer class="bg-slate-900/95 backdrop-blur border-t border-slate-700/50 p-4 absolute bottom-0 w-full">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex items-center gap-3 mb-3">
+                <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+                    <input type="checkbox" id="voice-enabled" checked class="w-4 h-4 accent-green-500">
+                    <i class="fas fa-volume-up text-green-400"></i> 语音输出
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+                    <input type="checkbox" id="stream-audio" checked class="w-4 h-4 accent-cyan-500">
+                    <i class="fas fa-stream text-cyan-400"></i> 流式播放
+                </label>
+                <div id="audio-status" class="ml-auto text-xs text-slate-500">
+                    <i class="fas fa-circle text-slate-600"></i> 待机
+                </div>
+            </div>
+            <form id="chat-form" class="flex gap-3">
+                <input type="text" id="user-input" 
+                    class="flex-1 bg-slate-800/80 text-white rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-green-500/50 border border-slate-700 placeholder-slate-500"
+                    placeholder="输入消息，体验语音回复..." autocomplete="off">
+                <button type="submit" id="send-btn"
+                    class="bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 text-white px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2">
+                    <span>发送</span>
+                    <i class="fas fa-paper-plane text-sm"></i>
+                </button>
+            </form>
+        </div>
+    </footer>
+
+    <script>
+        // ============== 配置 ==============
+        const CONFIG = {
+            LLM_URL: 'http://localhost:8000/chat/stream',
+            TTS_URL: 'http://localhost:9003/tts/stream',
+            SAMPLE_RATE: 24000
+        };
+
+        // ============== DOM ==============
+        const chatContainer = document.getElementById('chat-container');
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const voiceEnabled = document.getElementById('voice-enabled');
+        const streamAudio = document.getElementById('stream-audio');
+        const audioStatus = document.getElementById('audio-status');
+        const llmTtftEl = document.getElementById('llm-ttft');
+        const ttsTtfaEl = document.getElementById('tts-ttfa');
+        const totalLatencyEl = document.getElementById('total-latency');
+
+        let audioContext = null;
+        let abortController = null;
+
+        // ============== 音频播放器 ==============
+        class AudioStreamer {
+            constructor(sampleRate = 24000) {
+                this.sampleRate = sampleRate;
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+                this.nextStartTime = 0;
+                this.isPlaying = false;
+            }
+
+            async playChunk(int16Array) {
+                // 转换 Int16 到 Float32
+                const float32 = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32[i] = int16Array[i] / 32768.0;
+                }
+
+                // 创建音频缓冲区
+                const audioBuffer = this.audioContext.createBuffer(1, float32.length, this.sampleRate);
+                audioBuffer.getChannelData(0).set(float32);
+
+                // 播放
+                const source = this.audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(this.audioContext.destination);
+
+                const currentTime = this.audioContext.currentTime;
+                const startTime = Math.max(currentTime, this.nextStartTime);
+                source.start(startTime);
+                
+                this.nextStartTime = startTime + audioBuffer.duration;
+                this.isPlaying = true;
+            }
+
+            reset() {
+                this.nextStartTime = 0;
+                this.isPlaying = false;
+            }
+        }
+
+        const audioStreamer = new AudioStreamer(CONFIG.SAMPLE_RATE);
+
+        // ============== UI 工具 ==============
+        function setStatus(icon, text, color = 'slate') {
+            audioStatus.innerHTML = `<i class="fas fa-${icon} text-${color}-400"></i> ${text}`;
+        }
+
+        function addMessage(role, initialText = '') {
+            const div = document.createElement('div');
+            const isUser = role === 'user';
+            
+            div.className = `flex flex-col ${isUser ? 'items-end' : 'items-start'} w-full`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble p-4 ${isUser ? 'user-bubble text-white' : 'ai-bubble text-slate-200'}`;
+            
+            const header = document.createElement('div');
+            header.className = `flex items-center gap-2 mb-2 text-xs ${isUser ? 'text-blue-200' : 'text-slate-400'} font-semibold uppercase tracking-wider`;
+            header.innerHTML = isUser 
+                ? '<i class="fas fa-user"></i> You' 
+                : '<i class="fas fa-microphone-alt text-green-400"></i> Trinity';
+            
+            const content = document.createElement('div');
+            content.className = 'prose text-sm leading-relaxed';
+            content.innerHTML = initialText || '<span class="typing-cursor"></span>';
+            
+            bubble.appendChild(header);
+            bubble.appendChild(content);
+            div.appendChild(bubble);
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            return content;
+        }
+
+        // ============== 主逻辑 ==============
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            userInput.value = '';
+            userInput.disabled = true;
+            
+            addMessage('user', text);
+            const aiContent = addMessage('ai', '');
+
+            const totalStartTime = performance.now();
+            let llmTtft = null;
+            let fullResponse = '';
+
+            abortController = new AbortController();
+            audioStreamer.reset();
+
+            try {
+                // ========== 1. LLM 流式生成 ==========
+                setStatus('brain', 'LLM 思考中...', 'yellow');
+                
+                const llmResponse = await fetch(CONFIG.LLM_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text }),
+                    signal: abortController.signal
+                });
+
+                const reader = llmResponse.body.getReader();
+                const decoder = new TextDecoder();
+                let sentenceBuffer = '';
+                let ttsStarted = false;
+                let ttsTtfa = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullResponse += chunk;
+                    
+                    // LLM TTFT
+                    if (llmTtft === null && chunk.trim()) {
+                        llmTtft = performance.now() - totalStartTime;
+                        llmTtftEl.textContent = Math.round(llmTtft);
+                        llmTtftEl.className = llmTtft < 300 ? 'ml-2 text-green-400 font-bold' : 'ml-2 text-yellow-400 font-bold';
+                    }
+
+                    // 更新显示
+                    aiContent.innerHTML = marked.parse(fullResponse) + '<span class="typing-cursor"></span>';
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                    // ========== 2. 检测句子结束，触发 TTS ==========
+                    if (voiceEnabled.checked) {
+                        sentenceBuffer += chunk;
+                        
+                        // 检测句子边界 (。！？，；)
+                        const sentenceMatch = sentenceBuffer.match(/^(.+?[。！？，；：])/);
+                        if (sentenceMatch && !ttsStarted) {
+                            const sentence = sentenceMatch[1];
+                            sentenceBuffer = sentenceBuffer.slice(sentence.length);
+                            
+                            // 立即触发 TTS（不等待 LLM 完成）
+                            ttsStarted = true;
+                            setStatus('volume-up', '合成语音...', 'green');
+                            
+                            const ttsStartTime = performance.now();
+                            
+                            // 流式 TTS
+                            fetch(CONFIG.TTS_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: sentence })
+                            }).then(async (ttsRes) => {
+                                const ttsReader = ttsRes.body.getReader();
+                                let firstAudioChunk = true;
+                                
+                                while (true) {
+                                    const { done, value } = await ttsReader.read();
+                                    if (done) break;
+                                    
+                                    if (firstAudioChunk && value.length > 0) {
+                                        ttsTtfa = performance.now() - ttsStartTime;
+                                        ttsTtfaEl.textContent = Math.round(ttsTtfa);
+                                        ttsTtfaEl.className = ttsTtfa < 350 ? 'ml-2 text-green-400 font-bold' : 'ml-2 text-yellow-400 font-bold';
+                                        
+                                        // 总延迟 = LLM TTFT + TTS TTFA
+                                        const total = Math.round(llmTtft + ttsTtfa);
+                                        totalLatencyEl.textContent = total;
+                                        totalLatencyEl.className = total < 600 ? 'ml-2 text-green-400 font-bold' : 'ml-2 text-cyan-400 font-bold';
+                                        
+                                        setStatus('play', '播放中...', 'green');
+                                        firstAudioChunk = false;
+                                    }
+                                    
+                                    // 播放音频
+                                    if (streamAudio.checked && value.length > 0) {
+                                        const int16 = new Int16Array(value.buffer);
+                                        audioStreamer.playChunk(int16);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // 完成
+                aiContent.innerHTML = marked.parse(fullResponse);
+                setStatus('check-circle', '完成', 'green');
+
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    aiContent.innerHTML += `<div class="text-red-400 mt-2">Error: ${err.message}</div>`;
+                }
+                setStatus('exclamation-circle', '错误', 'red');
+            } finally {
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        });
+
+        userInput.focus();
+    </script>
+</body>
+</html>

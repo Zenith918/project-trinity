@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexTTS 2.5 音频试听</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7b68ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        .audio-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .audio-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 212, 255, 0.15);
+        }
+        .audio-title {
+            font-size: 1.2em;
+            color: #00d4ff;
+            margin-bottom: 8px;
+        }
+        .audio-text {
+            color: #aaa;
+            font-size: 0.95em;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border-left: 3px solid #7b68ee;
+        }
+        audio {
+            width: 100%;
+            height: 50px;
+            border-radius: 8px;
+        }
+        audio::-webkit-media-controls-panel {
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .info-box {
+            background: rgba(123, 104, 238, 0.1);
+            border: 1px solid rgba(123, 104, 238, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .info-box h3 {
+            color: #7b68ee;
+            margin-bottom: 12px;
+        }
+        .info-box p {
+            color: #aaa;
+            line-height: 1.6;
+        }
+        .tag {
+            display: inline-block;
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 IndexTTS 2.5 音频试听</h1>
+        <p class="subtitle">情感增强语音合成 · 44.1kHz 高保真音质</p>
+
+        <div class="audio-card">
+            <div class="audio-title">📝 普通陈述句</div>
+            <div class="audio-text">"你好，我是IndexTTS语音合成系统，很高兴认识你。"</div>
+            <audio controls src="indextts_neutral.wav"></audio>
+        </div>
+
+        <div class="audio-card">
+            <div class="audio-title">❓ 疑问句</div>
+            <div class="audio-text">"今天天气怎么样？你想出去散步吗？"</div>
+            <audio controls src="indextts_question.wav"></audio>
+        </div>
+
+        <div class="audio-card">
+            <div class="audio-title">😄 高兴/激动</div>
+            <div class="audio-text">"太棒了！我们终于成功了，这真是太令人兴奋了！"</div>
+            <audio controls src="indextts_happy.wav"></audio>
+        </div>
+
+        <div class="audio-card">
+            <div class="audio-title">📖 长文本</div>
+            <div class="audio-text">"人工智能技术的发展日新月异，语音合成作为其中重要的一环，正在让人机交互变得更加自然流畅。"</div>
+            <audio controls src="indextts_long.wav"></audio>
+        </div>
+
+        <div class="info-box">
+            <h3>📊 模型配置</h3>
+            <p>
+                <span class="tag">use_accel=True</span>
+                <span class="tag">diffusion_steps=5</span>
+                <span class="tag">44.1kHz</span>
+                <span class="tag">FP16</span>
+            </p>
+            <p style="margin-top: 12px;">
+                ⚠️ 注意：IndexTTS 2.5 是「伪流式」架构，TTFA 约 2-3 秒，适合高音质离线生成，不适合实时对话。
+            </p>
+        </div>
+    </div>
+</body>
+</html>

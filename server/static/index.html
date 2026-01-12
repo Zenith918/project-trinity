@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxCPM 1.5 语音测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); min-height: 100vh; }
+        .glass { background: rgba(30, 30, 50, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+        .speaking .pulse-ring { animation: pulse-ring 1s ease-out infinite; }
+    </style>
+</head>
+<body class="text-white font-sans">
+    <div class="container mx-auto px-4 py-12 max-w-2xl">
+        <!-- Header -->
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-green-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent mb-2">
+                VoxCPM 1.5 语音测试
+            </h1>
+            <p class="text-slate-400">直接测试 TTS 延迟，不经过 LLM</p>
+        </div>
+
+        <!-- Status Card -->
+        <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div id="status-dot" class="w-3 h-3 rounded-full bg-slate-500"></div>
+                    <span id="status-text" class="text-slate-300">检查服务状态...</span>
+                </div>
+                <button id="refresh-btn" onclick="checkHealth()" class="text-slate-400 hover:text-white transition">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Card -->
+        <div class="glass rounded-2xl p-8">
+            <!-- Avatar -->
+            <div id="avatar" class="relative w-24 h-24 mx-auto mb-6">
+                <div class="absolute inset-0 rounded-full bg-gradient-to-br from-green-500 to-cyan-500 flex items-center justify-center">
+                    <i class="fas fa-microphone-alt text-3xl text-white"></i>
+                </div>
+                <div class="pulse-ring absolute inset-0 rounded-full border-2 border-green-400 opacity-0"></div>
+            </div>
+
+            <!-- Input -->
+            <textarea id="text-input" rows="3" 
+                class="w-full bg-slate-800/50 rounded-xl p-4 text-white placeholder-slate-500 border border-slate-700 focus:border-green-500 focus:outline-none resize-none mb-4"
+                placeholder="输入要合成的文字...">你好，我是你的AI女友。今天过得怎么样？</textarea>
+
+            <!-- Controls -->
+            <div class="mb-6 bg-slate-800/30 rounded-xl p-4 border border-slate-700">
+                <div class="flex items-center gap-4 mb-2">
+                    <span class="text-sm text-slate-400 w-16">Steps: <span id="steps-val" class="text-green-400">4</span></span>
+                    <input type="range" id="steps-range" min="1" max="10" value="4" class="flex-1 accent-green-500" 
+                           oninput="document.getElementById('steps-val').textContent = this.value">
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-slate-400 w-16">CFG: <span id="cfg-val" class="text-cyan-400">1.0</span></span>
+                    <input type="range" id="cfg-range" min="0.1" max="2.0" step="0.1" value="1.0" class="flex-1 accent-cyan-500" 
+                           oninput="document.getElementById('cfg-val').textContent = this.value">
+                </div>
+                <div class="mt-2 text-xs text-slate-500 text-center">
+                    Steps 越低越快但越模糊；推荐 4-8 以获得清晰语音
+                </div>
+            </div>
+
+            <div class="flex gap-3 mb-6">
+                <button id="play-btn" onclick="synthesize()" 
+                    class="flex-1 bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    <i class="fas fa-play"></i>
+                    <span>播放</span>
+                </button>
+                <button id="stream-btn" onclick="synthesizeStream()" 
+                    class="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    <i class="fas fa-stream"></i>
+                    <span>流式播放</span>
+                </button>
+            </div>
+
+            <!-- Metrics -->
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">TTFA</div>
+                    <div id="ttfa" class="text-2xl font-bold text-green-400">--</div>
+                    <div class="text-xs text-slate-600">ms</div>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">总时长</div>
+                    <div id="total-time" class="text-2xl font-bold text-cyan-400">--</div>
+                    <div class="text-xs text-slate-600">ms</div>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-4">
+                    <div class="text-xs text-slate-500 mb-1">RTF</div>
+                    <div id="rtf" class="text-2xl font-bold text-purple-400">--</div>
+                    <div class="text-xs text-slate-600">x</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Presets -->
+        <div class="mt-6 flex flex-wrap gap-2 justify-center">
+            <button onclick="setPreset('你好')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">你好</button>
+            <button onclick="setPreset('今天天气真好，我们出去走走吧！')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">日常</button>
+            <button onclick="setPreset('我好想你啊，你什么时候回来？')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">思念</button>
+            <button onclick="setPreset('哼！你又在骗我，讨厌死了！')" class="px-4 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition">撒娇</button>
+        </div>
+        
+        <!-- 调试：直接下载音频 -->
+        <div class="mt-4 text-center">
+            <button onclick="downloadAudio()" class="px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg text-sm transition">
+                📥 下载 WAV (跳过前端播放)
+            </button>
+            <p class="text-xs text-slate-500 mt-1">如果下载的音频正常，说明问题在前端播放</p>
+        </div>
+    </div>
+
+    <script>
+        // 自动使用当前页面所在的 API 地址 (解决端口转发和跨域问题)
+        const TTS_URL = ''; 
+        let audioContext = null;
+
+        function setPreset(text) {
+            document.getElementById('text-input').value = text;
+        }
+
+        async function checkHealth() {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            try {
+                const res = await fetch(`${TTS_URL}/health`);
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    dot.className = 'w-3 h-3 rounded-full bg-green-500 animate-pulse';
+                    text.textContent = '✅ VoxCPM 1.5 就绪 (TTFA ~285ms)';
+                    document.getElementById('play-btn').disabled = false;
+                    document.getElementById('stream-btn').disabled = false;
+                } else {
+                    dot.className = 'w-3 h-3 rounded-full bg-yellow-500 animate-pulse';
+                    text.textContent = '⏳ ' + (data.status || '加载中...');
+                }
+            } catch (e) {
+                dot.className = 'w-3 h-3 rounded-full bg-red-500';
+                text.textContent = '❌ 服务未运行 (端口 9003)';
+            }
+        }
+
+        async function synthesize() {
+            const input = document.getElementById('text-input').value;
+            if (!input) return;
+
+            const steps = parseInt(document.getElementById('steps-range').value);
+            const cfg = parseFloat(document.getElementById('cfg-range').value);
+
+            const avatar = document.getElementById('avatar');
+            avatar.classList.add('speaking');
+            
+            const startTime = performance.now();
+            
+            try {
+                const res = await fetch(`${TTS_URL}/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        text: input,
+                        inference_timesteps: steps,
+                        cfg_value: cfg
+                    })
+                });
+                
+                const ttfa = performance.now() - startTime;
+                document.getElementById('ttfa').textContent = Math.round(ttfa);
+                
+                const audioBlob = await res.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                
+                audio.onended = () => {
+                    avatar.classList.remove('speaking');
+                    const totalTime = performance.now() - startTime;
+                    document.getElementById('total-time').textContent = Math.round(totalTime);
+                    // RTF = 合成时间 / 音频时长
+                    document.getElementById('rtf').textContent = (ttfa / 1000 / audio.duration).toFixed(2);
+                };
+                
+                audio.play();
+            } catch (e) {
+                avatar.classList.remove('speaking');
+                alert('错误: ' + e.message);
+            }
+        }
+
+        async function synthesizeStream() {
+            const input = document.getElementById('text-input').value;
+            if (!input) return;
+
+            const steps = parseInt(document.getElementById('steps-range').value);
+            const cfg = parseFloat(document.getElementById('cfg-range').value);
+
+            const avatar = document.getElementById('avatar');
+            avatar.classList.add('speaking');
+            
+            if (!audioContext) {
+                // VoxCPM 1.5 使用 44.1kHz 高保真采样率
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+                console.log(`🔊 AudioContext 采样率: ${audioContext.sampleRate} Hz (请求 44100 Hz)`);
+                if (audioContext.sampleRate !== 44100) {
+                    console.warn(`⚠️ 采样率不匹配！实际: ${audioContext.sampleRate}, 请求: 44100`);
+                }
+            }
+            
+            const startTime = performance.now();
+            let firstChunkTime = null;
+            let totalSamples = 0;
+            
+            // ═══════════════════════════════════════════════════════════════════════
+            // 🎯 核心改进：初始缓冲 + 平滑播放
+            // - 收集前 N 个 chunk 后才开始播放 (避免初始断流)
+            // - 增大缓冲量换取流畅度 (牺牲约 500ms 延迟)
+            // ═══════════════════════════════════════════════════════════════════════
+            const BUFFER_CHUNKS = 5; // 等待 5 个 chunk (~800ms) 后开始播放，换取绝对流畅
+            let chunks = [];
+            let isPlaying = false;
+            let scheduledEndTime = 0;
+            let pendingChunks = 0;  // 待播放的 chunk 计数（用于变速补偿）
+            
+            try {
+                const res = await fetch(`${TTS_URL}/tts/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        text: input,
+                        inference_timesteps: steps,
+                        cfg_value: cfg
+                    })
+                });
+                
+                const reader = res.body.getReader();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    if (value.length > 0) {
+                        const now = performance.now();
+                        if (firstChunkTime === null) {
+                            firstChunkTime = now;
+                            const ttfa = firstChunkTime - startTime;
+                            document.getElementById('ttfa').textContent = Math.round(ttfa);
+                            console.log(`🎤 TTFA: ${ttfa.toFixed(0)}ms`);
+                        }
+                        
+                        // 调试日志 (44100 Hz / 1000 = 44.1 samples per ms)
+                        const chunkMs = (value.length / 2) / 44.1;
+                        console.log(`📦 Chunk #${chunks.length+1}: ${value.length} bytes (${chunkMs.toFixed(0)}ms) @ ${(now-startTime).toFixed(0)}ms`);
+                        
+                        // 正确处理 buffer
+                        const safeBuffer = value.slice().buffer;
+                        const int16 = new Int16Array(safeBuffer);
+                        const float32 = new Float32Array(int16.length);
+                        for (let i = 0; i < int16.length; i++) {
+                            float32[i] = int16[i] / 32768.0;
+                        }
+                        totalSamples += float32.length;
+                        chunks.push(float32);
+                        pendingChunks++;  // 待播放计数
+                        
+                        // 缓冲够了就开始播放
+                        if (!isPlaying && chunks.length >= BUFFER_CHUNKS) {
+                            isPlaying = true;
+                            scheduledEndTime = audioContext.currentTime + 0.05; // 50ms 安全延迟
+                            console.log(`▶️ 开始播放 (缓冲了 ${chunks.length} 个 chunk)`);
+                            // 播放所有已缓冲的 chunk，传入缓冲级别
+                            for (let i = 0; i < chunks.length; i++) {
+                                const bufferLevel = chunks.length - i;  // 剩余待播放数量
+                                scheduledEndTime = playChunk(chunks[i], scheduledEndTime, bufferLevel);
+                            }
+                            pendingChunks = 0;
+                            chunks = [];
+                        } else if (isPlaying) {
+                            // 已在播放中，直接追加（传入当前缓冲级别）
+                            scheduledEndTime = playChunk(float32, scheduledEndTime, pendingChunks);
+                            pendingChunks = Math.max(0, pendingChunks - 1);
+                            chunks = [];
+                        }
+                    }
+                }
+                
+                // 播放剩余 chunks
+                if (chunks.length > 0 && !isPlaying) {
+                    scheduledEndTime = audioContext.currentTime + 0.05;
+                    for (let i = 0; i < chunks.length; i++) {
+                        const bufferLevel = chunks.length - i;
+                        scheduledEndTime = playChunk(chunks[i], scheduledEndTime, bufferLevel);
+                    }
+                }
+                
+                const totalTime = performance.now() - startTime;
+                document.getElementById('total-time').textContent = Math.round(totalTime);
+                
+                const audioDuration = totalSamples / 44100;  // VoxCPM 1.5 采样率
+                document.getElementById('rtf').textContent = ((firstChunkTime - startTime) / 1000 / audioDuration).toFixed(2);
+                
+                // 等待播放完成
+                const remainingPlayTime = (scheduledEndTime - audioContext.currentTime) * 1000;
+                setTimeout(() => avatar.classList.remove('speaking'), Math.max(0, remainingPlayTime));
+                
+            } catch (e) {
+                avatar.classList.remove('speaking');
+                alert('错误: ' + e.message);
+            }
+            
+            // 辅助函数：播放单个 chunk，返回结束时间
+            // 🔧 变速补偿：当缓冲区告急时降速，为后端争取时间
+            function playChunk(float32, startAt, bufferLevel = 5) {
+                const audioBuffer = audioContext.createBuffer(1, float32.length, 44100);
+                audioBuffer.getChannelData(0).set(float32);
+                
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                
+                // 🎯 变速补偿：缓冲区告急时降速 8%，用户几乎听不出来
+                // bufferLevel = 待播放的 chunk 数量
+                if (bufferLevel < 2) {
+                    source.playbackRate.value = 0.92;  // 降速 8%
+                    console.log(`🐢 缓冲告急 (${bufferLevel})，降速至 0.92x`);
+                } else if (bufferLevel < 4) {
+                    source.playbackRate.value = 0.96;  // 轻微降速 4%
+                } else {
+                    source.playbackRate.value = 1.0;   // 正常速度
+                }
+                
+                // 处理时间对齐
+                const now = audioContext.currentTime;
+                if (startAt < now) {
+                    startAt = now + 0.05;
+                    console.log(`⚠️ 播放时间重对齐: +50ms`);
+                }
+                source.start(startAt);
+                
+                // 注意：变速时实际播放时长会变化
+                const actualDuration = audioBuffer.duration / source.playbackRate.value;
+                return startAt + actualDuration;
+            }
+        }
+
+        // 下载音频（绕过前端播放，测试后端音频是否正确）
+        async function downloadAudio() {
+            const input = document.getElementById('text-input').value;
+            if (!input) return alert('请输入文字');
+            
+            const steps = parseInt(document.getElementById('steps-range').value);
+            const cfg = parseFloat(document.getElementById('cfg-range').value);
+            
+            try {
+                const res = await fetch(`${TTS_URL}/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: input, inference_timesteps: steps, cfg_value: cfg })
+                });
+                
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'voxcpm_output.wav';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('下载失败: ' + e.message);
+            }
+        }
+
+        // 初始化
+        checkHealth();
+        setInterval(checkHealth, 5000);
+    </script>
+</body>
+</html>
