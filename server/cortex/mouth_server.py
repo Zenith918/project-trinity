@@ -4,7 +4,7 @@
 ║  可独立重启，不影响 Brain 和 Ear (~60s 加载时间)                               ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
-║  ⚠️ 注意: CosyVoice TTFT ~10秒       ║
+║        ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
@@ -30,9 +30,11 @@ def kill_port(port: int):
         pass
 
 kill_port(SERVICE_PORT)
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+import asyncio
+import json
 
 # 添加 CosyVoice 路径
 COSYVOICE_PATH = "/workspace/CosyVoice"
@@ -63,6 +65,83 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, title="Cortex-Mouth")
 
+@app.websocket("/tts/ws")
+async def tts_websocket(websocket: WebSocket):
+    """
+    🆕 双向流式 TTS 接口 - 阿里级边进边出架构
+    
+    协议:
+    1. Client 发送文本片段 (Text Frames)，可以逐字发送
+    2. Server 实时返回音频片段 (Binary Frames)
+    3. Client 发送空文本 ("") 表示输入结束
+    
+    特性:
+    - 动态触发阈值: 5字首包 / 12字语感包 / 强标点触发
+    - 零拷贝传输: send_bytes 直接推送二进制
+    - 非阻塞队列: 接收和推理在独立任务
+    """
+    await websocket.accept()
+    logger.info("🔌 WebSocket 连接建立")
+    
+    if not mouth or not mouth.is_ready:
+        await websocket.close(code=1011, reason="Mouth not ready")
+        return
+
+    # 创建一个 asyncio Queue 作为文本缓冲区
+    text_queue = asyncio.Queue()
+    input_ended = False
+    
+    async def receive_text_loop():
+        """接收前端发来的文本流 (独立异步任务)"""
+        nonlocal input_ended
+        try:
+            while True:
+                data = await websocket.receive_text()
+                if data:
+                    # 逐字放入队列，让 synthesize_stream 可以边进边出
+                    for char in data:
+                        await text_queue.put(char)
+                else:
+                    # 空消息表示输入结束
+                    input_ended = True
+                    break
+        except WebSocketDisconnect:
+            input_ended = True
+        except Exception as e:
+            logger.error(f"WebSocket Receive Error: {e}")
+            input_ended = True
+        finally:
+            # 发送结束标记
+            await text_queue.put(None)
+
+    async def text_iterator():
+        """将 Queue 转换为 AsyncIterator[str] 供 mouth 使用"""
+        while True:
+            char = await text_queue.get()
+            if char is None:
+                break
+            yield char
+    
+    # 启动接收任务 (非阻塞)
+    receive_task = asyncio.create_task(receive_text_loop())
+    
+    try:
+        # 🚀 启动合成并发送音频
+        # synthesize_stream 已支持 AsyncIterator[str]，实现边进边出
+        async for audio_chunk in mouth.synthesize_stream(text_iterator()):
+            if audio_chunk:  # 过滤空块
+                await websocket.send_bytes(audio_chunk)
+            
+    except Exception as e:
+        logger.error(f"WebSocket TTS Error: {e}")
+    finally:
+        receive_task.cancel()
+        try:
+            await websocket.close()
+            logger.info("🔌 WebSocket 连接关闭")
+        except:
+            pass
+
 @app.get("/health")
 async def health():
     return {
@@ -74,14 +153,18 @@ async def health():
 @app.post("/tts")
 async def tts(request: dict):
     """
-    文本转语音
+    文本转语音 - 支持流式和非流式模式
     
     请求体:
     {
         "text": "要合成的文本",
-        "instruct_text": "用温柔甜美的女声说",
-        "stream": false  // 是否流式返回
+        "instruct_text": "用温柔甜美的女声说",  // 暂未使用
+        "stream": false  // true=流式返回 (推荐)
     }
+    
+    🆕 改进:
+    - stream=true 时使用动态阈值架构，享受更低延迟
+    - stream=false 时等待完整音频后返回
     """
     if not mouth or not mouth.is_ready:
         return {"error": "Mouth not ready"}
@@ -94,7 +177,7 @@ async def tts(request: dict):
         return {"error": "text is required"}
     
     if stream:
-        # 流式返回音频块
+        # 🆕 流式模式：直接传入 str，synthesize_stream 内部会归一化处理
         return StreamingResponse(
             mouth.synthesize_stream(text, instruct_text),
             media_type="audio/wav",
@@ -116,8 +199,12 @@ async def tts(request: dict):
 @app.post("/tts/stream")
 async def tts_stream(request: dict):
     """
-    流式 TTS - 边生成边发送音频块
-    返回格式: chunked WAV data
+    🆕 流式 TTS - 阿里级 200ms TTFA 架构
+    
+    特性:
+    - 动态触发阈值: 5字首包 / 12字语感包 / 强标点触发
+    - 边生成边发送音频块
+    - 返回格式: chunked WAV data (首包带头，后续 PCM)
     """
     if not mouth or not mouth.is_ready:
         return {"error": "Mouth not ready"}
@@ -128,18 +215,61 @@ async def tts_stream(request: dict):
     if not text:
         return {"error": "text is required"}
     
-    async def audio_stream():
-        async for chunk in mouth.synthesize_stream(text, instruct_text):
-            yield chunk
-    
+    # 🆕 直接传入 str，synthesize_stream 内部归一化处理
     return StreamingResponse(
-        audio_stream(),
+        mouth.synthesize_stream(text, instruct_text),
         media_type="audio/wav",
         headers={
             "X-Streaming": "true",
-            "Cache-Control": "no-cache"
+            "Cache-Control": "no-cache",
+            "X-TTFA-Target": "200ms"
         }
     )
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🎛️ 动态配置 API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/config")
+async def get_config():
+    """获取当前配置"""
+    from trinity_config import config
+    return {
+        "config": config.to_dict(),
+        "description": {
+            "n_timesteps": "Flow ODE 步数 (2=极速有电磁音, 5=平衡, 10=高质量)",
+            "token_hop_len": "LLM token 缓冲 (5=极速可能卡顿, 10=平衡, 25=高质量)",
+            "first_chunk_threshold": "首包触发字符数",
+            "normal_chunk_threshold": "后续触发字符数"
+        }
+    }
+
+@app.post("/config")
+async def update_config(request: dict):
+    """
+    动态更新配置 (无需重启服务)
+    
+    示例请求:
+    {
+        "n_timesteps": 5,
+        "token_hop_len": 10
+    }
+    """
+    from trinity_config import config
+    
+    # 更新配置
+    updated = config.update(**request)
+    
+    # 同步更新模型的 token_hop_len (如果已加载)
+    if mouth and mouth.model and "token_hop_len" in updated:
+        mouth.model.model.token_hop_len = config.token_hop_len
+        logger.info(f"🔧 已同步更新 model.token_hop_len = {config.token_hop_len}")
+    
+    return {
+        "status": "updated",
+        "changes": updated,
+        "current": config.to_dict()
+    }
 
 if __name__ == "__main__":
     import uvicorn
