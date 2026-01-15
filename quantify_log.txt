@@ -1,0 +1,32 @@
+/usr/local/lib/python3.11/dist-packages/awq/__init__.py:21: DeprecationWarning: 
+I have left this message as the final dev message to help you transition.
+
+Important Notice:
+- AutoAWQ is officially deprecated and will no longer be maintained.
+- The last tested configuration used Torch 2.6.0 and Transformers 4.51.3.
+- If future versions of Transformers break AutoAWQ compatibility, please report the issue to the Transformers project.
+
+Alternative:
+- AutoAWQ has been adopted by the vLLM Project: https://github.com/vllm-project/llm-compressor
+
+For further inquiries, feel free to reach out:
+- X: https://x.com/casper_hansen_
+- LinkedIn: https://www.linkedin.com/in/casper-hansen-804005170/
+
+  warnings.warn(_FINAL_DEV_MESSAGE, category=DeprecationWarning, stacklevel=1)
+Traceback (most recent call last):
+  File "/workspace/project-trinity/project-trinity/quantify_moss.py", line 1, in <module>
+    from awq import AutoAWQForCausalLM
+  File "/usr/local/lib/python3.11/dist-packages/awq/__init__.py", line 24, in <module>
+    from awq.models.auto import AutoAWQForCausalLM
+  File "/usr/local/lib/python3.11/dist-packages/awq/models/__init__.py", line 1, in <module>
+    from .mpt import MptAWQForCausalLM
+  File "/usr/local/lib/python3.11/dist-packages/awq/models/mpt.py", line 1, in <module>
+    from .base import BaseAWQForCausalLM
+  File "/usr/local/lib/python3.11/dist-packages/awq/models/base.py", line 49, in <module>
+    from awq.quantize.quantizer import AwqQuantizer
+  File "/usr/local/lib/python3.11/dist-packages/awq/quantize/quantizer.py", line 11, in <module>
+    from awq.quantize.scale import apply_scale, apply_clip
+  File "/usr/local/lib/python3.11/dist-packages/awq/quantize/scale.py", line 12, in <module>
+    from transformers.activations import NewGELUActivation, PytorchGELUTanh, GELUActivation
+ImportError: cannot import name 'PytorchGELUTanh' from 'transformers.activations' (/usr/local/lib/python3.11/dist-packages/transformers/activations.py)

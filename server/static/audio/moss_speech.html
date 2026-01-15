@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOSS-Speech 音频测试</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2332;
+            --accent-moss: #22c55e;
+            --accent-moss-dim: rgba(34, 197, 94, 0.15);
+            --accent-gold: #f59e0b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #2d3748;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            background-image: 
+                radial-gradient(ellipse at 20% 20%, rgba(34, 197, 94, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--accent-moss), var(--accent-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            background: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent-moss);
+        }
+        
+        .metric-value.warning {
+            color: var(--accent-gold);
+        }
+        
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+        }
+        
+        .audio-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .audio-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .audio-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--accent-moss-dim);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .audio-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .audio-desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .audio-player {
+            width: 100%;
+            height: 54px;
+            border-radius: 27px;
+            outline: none;
+        }
+        
+        .audio-player::-webkit-media-controls-panel {
+            background: var(--bg-secondary);
+        }
+        
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: auto;
+        }
+        
+        .tag-reference {
+            background: rgba(99, 102, 241, 0.2);
+            color: #818cf8;
+        }
+        
+        .tag-generated {
+            background: var(--accent-moss-dim);
+            color: var(--accent-moss);
+        }
+        
+        .tag-e2e {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-gold);
+        }
+        
+        .info-box {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent-moss);
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin-top: 1rem;
+        }
+        
+        .info-box code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        footer {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 2rem;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌿 MOSS-Speech 音频测试</h1>
+            <p class="subtitle">端到端语音对话模型 · Speech-to-Speech</p>
+        </header>
+        
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value warning">372ms</div>
+                <div class="metric-label">TTFA (目标300ms)</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">24kHz</div>
+                <div class="metric-label">输出采样率</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">21GB</div>
+                <div class="metric-label">显存 (FP16)</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">7B</div>
+                <div class="metric-label">模型参数</div>
+            </div>
+        </div>
+        
+        <div class="audio-section">
+            <div class="audio-header">
+                <div class="audio-icon">🎤</div>
+                <div>
+                    <div class="audio-title">输入：参考音频</div>
+                    <div class="audio-desc">CosyVoice zero_shot_prompt.wav · 3.48秒</div>
+                </div>
+                <span class="tag tag-reference">INPUT</span>
+            </div>
+            <audio class="audio-player" controls preload="metadata">
+                <source src="moss_reference.wav" type="audio/wav">
+            </audio>
+            <div class="info-box">
+                <strong>说明：</strong>这是输入给 MOSS-Speech 的语音，模型需要理解语音内容并生成回复
+            </div>
+        </div>
+        
+        <div class="audio-section">
+            <div class="audio-header">
+                <div class="audio-icon">🔊</div>
+                <div>
+                    <div class="audio-title">输出：Greedy Decoding 生成</div>
+                    <div class="audio-desc">153 tokens · 63秒生成 · 15.92秒音频</div>
+                </div>
+                <span class="tag tag-generated">OUTPUT</span>
+            </div>
+            <audio class="audio-player" controls preload="metadata">
+                <source src="moss_speech_test.wav" type="audio/wav">
+            </audio>
+            <div class="info-box">
+                <strong>配置：</strong><code>do_sample=False</code>, <code>max_new_tokens=200</code><br>
+                <strong>备注：</strong>Greedy Decoding 可正常生成，采样模式有 NaN bug
+            </div>
+        </div>
+        
+        <div class="audio-section">
+            <div class="audio-header">
+                <div class="audio-icon">⚡</div>
+                <div>
+                    <div class="audio-title">输出：端到端测试（错误格式）</div>
+                    <div class="audio-desc">❌ 使用了错误的 audio_path 格式</div>
+                </div>
+                <span class="tag tag-e2e">FAILED</span>
+            </div>
+            <audio class="audio-player" controls preload="metadata">
+                <source src="moss_speech_e2e.wav" type="audio/wav">
+            </audio>
+            <div class="info-box">
+                <strong>转录：</strong>「我没有看到您的信息中有任何的问题或要求」<br>
+                <strong>问题：</strong>模型没有理解语音内容
+            </div>
+        </div>
+        
+        <div class="audio-section" style="border: 2px solid var(--accent-moss);">
+            <div class="audio-header">
+                <div class="audio-icon">✅</div>
+                <div>
+                    <div class="audio-title">输出：正确格式生成</div>
+                    <div class="audio-desc">使用 {"path": "..."} 格式 · 7.92秒音频</div>
+                </div>
+                <span class="tag tag-generated">SUCCESS</span>
+            </div>
+            <audio class="audio-player" controls preload="metadata">
+                <source src="moss_correct_format.wav" type="audio/wav">
+            </audio>
+            <div class="info-box">
+                <strong>输入：</strong>「希望你以后能够做得比我还好哟。」<br>
+                <strong>输出：</strong>「谢谢你的祝福」 ✅<br>
+                <strong>延迟：</strong>34秒（需要优化）
+            </div>
+        </div>
+        
+        <footer>
+            <p>Project Trinity · MOSS-Speech 迁移测试 · 2026-01-13</p>
+        </footer>
+    </div>
+</body>
+</html>
+

@@ -130,7 +130,7 @@ async def tts_websocket(websocket: WebSocket):
         # synthesize_stream 已支持 AsyncIterator[str]，实现边进边出
         async for audio_chunk in mouth.synthesize_stream(text_iterator()):
             if audio_chunk:  # 过滤空块
-                await websocket.send_bytes(audio_chunk)
+            await websocket.send_bytes(audio_chunk)
             
     except Exception as e:
         logger.error(f"WebSocket TTS Error: {e}")
